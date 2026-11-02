@@ -1,29 +1,35 @@
 const DEFAULTS={photoCounts:[1,2,3,4],countdowns:[3,5,0],filters:["none","warm","soft","vintage","mono"],frames:["cream","pink","dark","white","wedding"],title:"THE WEDDING OF NIKEN & EGIT",subtitle:"19.12.2026"};
-
-const COOKIE="snap_admin";
-const enc=s=>new TextEncoder().encode(s);
-
-function b64url(bytes){
- return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const COOKIE="snap_admin", VISITOR="snap_visitor", enc=s=>new TextEncoder().encode(s);
+function b64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"")}
+async function sign(payload,secret){const key=await crypto.subtle.importKey("raw",enc(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);return b64url(await crypto.subtle.sign("HMAC",key,enc(payload)))}
+async function valid(request,env){const m=(request.headers.get("Cookie")||"").match(new RegExp(COOKIE+"=([^;]+)"));if(!m||!env.ADMIN_SECRET)return false;const [p,s]=m[1].split(".");if(!p||!s)return false;try{const raw=atob(p.replace(/-/g,"+").replace(/_/g,"/"));if(JSON.parse(raw).exp<Date.now())return false;return await sign(p,env.ADMIN_SECRET)===s}catch{return false}}
+const json=(o,status=200,headers={})=>new Response(JSON.stringify(o),{status,headers:{"Content-Type":"application/json; charset=utf-8","Cache-Control":"no-store",...headers}});
+async function readConfig(env){try{return {...DEFAULTS,...JSON.parse(await env.SNAP_SMILE_SETTINGS.get("public-config")||"{}")}}catch{return DEFAULTS}}
+async function visitorId(request,env){const m=(request.headers.get("Cookie")||"").match(new RegExp(VISITOR+"=([^;]+)"));if(m&&/^[a-f0-9-]{20,50}$/i.test(m[1]))return {id:m[1],cookie:null};const id=crypto.randomUUID();return {id,cookie:`${VISITOR}=${id}; Secure; SameSite=Lax; Path=/; Max-Age=31536000`}}
+async function imagekit(env,path,options={}){const auth=btoa(`${env.IMAGEKIT_PRIVATE_KEY}:`);return fetch(`https://api.imagekit.io/v1${path}`,{...options,headers:{Authorization:`Basic ${auth}`,...(options.headers||{})}})}
+async function adminGallery(env){let cursor,keys=[];do{const page=await env.SNAP_SMILE_SETTINGS.list({prefix:"gallery:",...(cursor?{cursor}:{})});keys.push(...page.keys);cursor=page.list_complete?undefined:page.cursor}while(cursor);const rows=await Promise.all(keys.map(async k=>{try{return JSON.parse(await env.SNAP_SMILE_SETTINGS.get(k.name))}catch{return null}}));return rows.filter(Boolean).sort((a,b)=>b.createdAt-a.createdAt)}
+export default{async fetch(request,env){const url=new URL(request.url),path=url.pathname;
+if(path==="/api/config"&&request.method==="GET")return json(await readConfig(env));
+if(path==="/api/gallery"&&request.method==="GET")return json({photos:await adminGallery(env)});
+if(path==="/api/upload"&&request.method==="POST"){
+ if(!env.IMAGEKIT_PRIVATE_KEY||!env.IMAGEKIT_PUBLIC_KEY||!env.IMAGEKIT_URL_ENDPOINT)return json({error:"ImageKit belum dikonfigurasi di Cloudflare Secrets."},503);
+ let body;try{body=await request.json()}catch{return json({error:"Data foto tidak valid."},400)}
+ if(typeof body.image!=="string"||!body.image.startsWith("data:image/"))return json({error:"File gambar tidak valid."},400);
+ const {id,cookie}=await visitorId(request,env),countKey=`uploads:${id}`,used=Number(await env.SNAP_SMILE_SETTINGS.get(countKey)||0);
+ if(used>=3)return json({error:"Batas upload kamu sudah tercapai (maksimal 3 frame)."},429);
+ const parts=body.image.match(/^data:(image\/(?:png|jpeg|webp));base64,([\s\S]+)$/);if(!parts)return json({error:"Format gambar tidak didukung."},400);
+ const bytes=Uint8Array.from(atob(parts[2]),c=>c.charCodeAt(0));if(bytes.length>12*1024*1024)return json({error:"Ukuran frame maksimal 12 MB."},413);
+ const form=new FormData();form.append("file",new Blob([bytes],{type:parts[1]}),`snap-smile-${Date.now()}.png`);form.append("fileName",`snap-smile-${Date.now()}.png`);form.append("folder","/snap-smile-gallery");form.append("useUniqueFileName","true");
+ const up=await imagekit(env,"/files/upload",{method:"POST",body:form});let result;try{result=await up.json()}catch{return json({error:"Respons ImageKit tidak terbaca."},502)}if(!up.ok)return json({error:result.message||"Upload ke ImageKit gagal."},502);
+ const item={fileId:result.fileId,url:result.url,thumbnailUrl:result.thumbnailUrl||result.url,name:result.name,createdAt:Date.now()};await env.SNAP_SMILE_SETTINGS.put(`gallery:${item.fileId}`,JSON.stringify(item));await env.SNAP_SMILE_SETTINGS.put(countKey,String(used+1),{expirationTtl:60*60*24*30});return json({ok:true,photo:item,remaining:2-used},200,cookie?{"Set-Cookie":cookie}:{});
 }
+if(path==="/api/admin/login"&&request.method==="POST"){let b={};try{b=await request.json()}catch{}if(!env.ADMIN_PASSWORD||!env.ADMIN_SECRET)return json({error:"Admin belum dikonfigurasi di Cloudflare Secrets."},503);if(typeof b.password!=="string"||b.password!==env.ADMIN_PASSWORD)return json({error:"Password salah."},401);const p=b64url(enc(JSON.stringify({exp:Date.now()+28800000}))),sig=await sign(p,env.ADMIN_SECRET);return json({ok:true},200,{"Set-Cookie":`${COOKIE}=${p}.${sig}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`})}
+if(path==="/api/admin/logout"&&request.method==="POST")return json({ok:true},200,{"Set-Cookie":`${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`});
+if(path==="/api/admin/gallery"&&request.method==="GET"){if(!await valid(request,env))return json({error:"Silakan login sebagai admin."},401);return json({photos:await adminGallery(env)})}
+if(path==="/api/admin/gallery"&&request.method==="DELETE"){if(!await valid(request,env))return json({error:"Silakan login sebagai admin."},401);let b={};try{b=await request.json()}catch{}const ids=Array.isArray(b.fileIds)?b.fileIds:[];if(!ids.length)return json({error:"Pilih foto yang akan dihapus."},400);for(const id of ids){if(typeof id!=="string"||!/^[\w-]+$/.test(id))continue;const r=await imagekit(env,`/files/${encodeURIComponent(id)}`,{method:"DELETE"});if(r.ok||r.status===404)await env.SNAP_SMILE_SETTINGS.delete(`gallery:${id}`)}return json({ok:true,photos:await adminGallery(env)})}
+if(path==="/api/admin/config"&&(request.method==="GET"||request.method==="PUT")){if(!await valid(request,env))return json({error:"Silakan login sebagai admin."},401);if(request.method==="GET")return json(await readConfig(env));let c;try{c=await request.json()}catch{return json({error:"Format pengaturan tidak valid."},400)}const allowed={photoCounts:[1,2,3,4],countdowns:[0,3,5],filters:["none","warm","soft","vintage","mono"],frames:["cream","pink","dark","white","wedding"]};for(const k of Object.keys(allowed)){if(!Array.isArray(c[k])||!c[k].length||c[k].some(v=>!allowed[k].includes((k==="photoCounts"||k==="countdowns")?Number(v):v)))return json({error:"Pilihan "+k+" tidak valid."},400)}const saved={photoCounts:c.photoCounts.map(Number),countdowns:c.countdowns.map(Number),filters:c.filters,frames:c.frames,title:String(c.title||DEFAULTS.title).slice(0,80),subtitle:String(c.subtitle||DEFAULTS.subtitle).slice(0,40)};await env.SNAP_SMILE_SETTINGS.put("public-config",JSON.stringify(saved));return json({ok:true})}
+if(path==="/admin"||path==="/admin/")return env.ASSETS.fetch(new Request(new URL("/admin.html",url),request));return env.ASSETS.fetch(request)}};
 
-async function sign(payload,secret){
- const key=await crypto.subtle.importKey("raw",enc(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
- return b64url(await crypto.subtle.sign("HMAC",key,enc(payload)));
-}
-
-async function valid(request,env){
- const m=(request.headers.get("Cookie")||"").match(new RegExp(COOKIE+"=([^;]+)"));
- if(!m||!env.ADMIN_SECRET)return false;
- const [p,s]=m[1].split(".");
- if(!p||!s)return false;
- try{
-  let b=p.replace(/-/g,"+").replace(/_/g,"/");
-  b+="=".repeat((4-b.length%4)%4);
-  if(JSON.parse(atob(b)).exp<Date.now())return false;
-  return await sign(p,env.ADMIN_SECRET)===s;
- }catch{return false;}
-}
 
 const json=(o,status=200,headers={})=>new Response(JSON.stringify(o),{
  status,
