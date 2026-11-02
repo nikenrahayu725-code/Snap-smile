@@ -203,49 +203,79 @@ async function shoot(){
 }
 function renderStrip(){
  const style=document.getElementById('frame').value;
- if(false){
-  const configs={
-   wedding1:{file:'wedding-frame-1.png',w:1080,h:1920,slots:[[103,383,874,1095]]},
-   wedding2:{file:'wedding-frame-2.png',w:1080,h:1920,slots:[[117,355,847,396],[117,805,847,456]]},
-   wedding3:{file:'wedding-frame-3.png',w:1080,h:1920,slots:[[113,320,855,311],[113,670,855,286],[113,995,855,291]]},
-   wedding:{file:'wedding-frame.png',w:1080,h:1920,slots:[[67,335,387,411],[497,335,447,411],[67,790,387,426],[497,790,447,426]]}
-  };
-  const cfg=configs[style],c=document.createElement('canvas');c.width=cfg.w;c.height=cfg.h;const x=c.getContext('2d');
-  cfg.slots.slice(0,shots.length).forEach((slot,i)=>{
-   const shot=shots[i],[sx,sy,sw,sh]=slot;
-   x.save();x.beginPath();x.roundRect(sx,sy,sw,sh,38);x.clip();
-   const scale=Math.max(sw/shot.width,sh/shot.height),dw=shot.width*scale,dh=shot.height*scale;
-   x.drawImage(shot,sx+(sw-dw)/2,sy+(sh-dh)/2,dw,dh);x.restore();
-  });
-  const img=new Image();img.onload=()=>{
-   x.drawImage(img,0,0,c.width,c.height);
-   finalCanvas=c;result.innerHTML='';result.appendChild(c);
-  };
-  img.onerror=()=>setStatus('Frame wedding tidak ditemukan. Pastikan semua file PNG ikut diunggah.');
-  img.src=cfg.file;return;
- }
- const p=palettes[style], title=document.getElementById('title').value.trim()||'SNAP & SMILE';
- const subtitle=document.getElementById('subtitle').value.trim();
- const w=900, pad=42, gap=24, top=112, bottom=subtitle?112:88;
+ const palette=palettes[style], title=document.getElementById('title').value.trim()||'The Wedding of Niken & Egit';
+ const subtitle=document.getElementById('subtitle').value.trim()||'19.12.2026';
+ const w=900, pad=58, gap=20, top=226, bottom=154;
  const isFourGrid=shots.length===4;
  const photoW=isFourGrid?Math.floor((w-pad*2-gap)/2):w-pad*2;
  const photoH=Math.round(photoW*5/4);
  const rows=isFourGrid?2:shots.length;
  const h=top+rows*photoH+(rows-1)*gap+bottom;
- const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
- x.fillStyle=p.bg;x.fillRect(0,0,w,h);
- x.textAlign='center';x.fillStyle=p.ink;x.font='bold 36px Georgia';x.fillText(title.toUpperCase(),w/2,66);
- x.fillStyle=p.accent;x.fillRect(w/2-42,84,84,3);
- shots.forEach((s,i)=>{
-  const col=isFourGrid?i%2:0, row=isFourGrid?Math.floor(i/2):i;
-  const px=pad+col*(photoW+gap), py=top+row*(photoH+gap);
-  x.save();x.beginPath();x.roundRect(px,py,photoW,photoH,18);x.clip();
-  x.drawImage(s,0,0,s.width,s.height,px,py,photoW,photoH);
+ const c=document.createElement('canvas');c.width=w;c.height=h;
+ const x=c.getContext('2d');
+ const burgundy=style==='dark'?'#d8b98f':(style==='pink'?'#89545c':'#762f37');
+ const gold=style==='dark'?'#d1b18c':'#b68a55';
+ const ink=style==='dark'?'#fff7ec':(style==='pink'?'#68454c':'#542f30');
+ x.fillStyle=palette.bg;x.fillRect(0,0,w,h);
+
+ // Double ornamental border and Minangkabau-inspired geometric trim.
+ x.strokeStyle=burgundy;x.lineWidth=8;x.strokeRect(17,17,w-34,h-34);
+ x.strokeStyle=gold;x.lineWidth=2;x.strokeRect(31,31,w-62,h-62);
+ function diamond(cx,cy,size,color){
+  x.save();x.translate(cx,cy);x.rotate(Math.PI/4);x.strokeStyle=color;x.lineWidth=3;
+  x.strokeRect(-size/2,-size/2,size,size);x.restore();
+ }
+ for(let xx=55;xx<w-45;xx+=34){diamond(xx,43,11,gold);diamond(xx,h-43,11,gold)}
+ for(let yy=70;yy<h-65;yy+=34){diamond(43,yy,10,gold);diamond(w-43,yy,10,gold)}
+
+ // Stylized Rumah Gadang roof silhouette.
+ x.save();x.translate(w/2,74);x.fillStyle=burgundy;
+ x.beginPath();x.moveTo(-150,34);x.quadraticCurveTo(-122,27,-108,-5);x.quadraticCurveTo(-92,20,-75,24);
+ x.quadraticCurveTo(-45,15,-28,-25);x.quadraticCurveTo(-12,4,0,8);
+ x.quadraticCurveTo(12,4,28,-25);x.quadraticCurveTo(45,15,75,24);
+ x.quadraticCurveTo(92,20,108,-5);x.quadraticCurveTo(122,27,150,34);
+ x.lineTo(150,43);x.lineTo(-150,43);x.closePath();x.fill();
+ x.strokeStyle=gold;x.lineWidth=3;x.stroke();
+ x.restore();
+
+ // Small floral ornaments in the four corners.
+ function flower(cx,cy,r){
+  x.save();x.translate(cx,cy);
+  for(let i=0;i<8;i++){
+   x.rotate(Math.PI/4);x.beginPath();x.ellipse(0,-r*.62,r*.25,r*.52,0,0,Math.PI*2);
+   x.fillStyle=i%2?'#ead8c2':'#a65355';x.fill();x.strokeStyle=gold;x.lineWidth=1.5;x.stroke();
+  }
+  x.beginPath();x.arc(0,0,r*.23,0,Math.PI*2);x.fillStyle=gold;x.fill();
   x.restore();
-  x.strokeStyle=p.accent;x.lineWidth=4;x.beginPath();x.roundRect(px,py,photoW,photoH,18);x.stroke();
+ }
+ flower(78,112,25);flower(w-78,112,25);flower(78,h-94,25);flower(w-78,h-94,25);
+
+ // Wedding heading.
+ x.textAlign='center';x.fillStyle=ink;
+ x.font='bold 24px Georgia';x.fillText('THE WEDDING OF',w/2,133);
+ const couple=title.replace(/^the wedding of\s*/i,'').trim()||'Niken & Egit';
+ x.font='italic 54px Georgia';x.fillText(couple,w/2,190);
+ x.strokeStyle=gold;x.lineWidth=3;x.beginPath();x.moveTo(w/2-70,205);x.lineTo(w/2+70,205);x.stroke();
+ diamond(w/2,205,12,burgundy);
+
+ // Photo windows.
+ shots.forEach((s,i)=>{
+  const col=isFourGrid?i%2:0,row=isFourGrid?Math.floor(i/2):i;
+  const px=pad+col*(photoW+gap),py=top+row*(photoH+gap);
+  x.save();x.shadowColor='#4a252522';x.shadowBlur=12;x.shadowOffsetY=4;
+  x.fillStyle='#fffaf3';x.beginPath();x.roundRect(px-5,py-5,photoW+10,photoH+10,22);x.fill();x.restore();
+  x.save();x.beginPath();x.roundRect(px,py,photoW,photoH,18);x.clip();
+  x.drawImage(s,0,0,s.width,s.height,px,py,photoW,photoH);x.restore();
+  x.strokeStyle=burgundy;x.lineWidth=5;x.beginPath();x.roundRect(px,py,photoW,photoH,18);x.stroke();
+  x.strokeStyle=gold;x.lineWidth=1.5;x.beginPath();x.roundRect(px+7,py+7,photoW-14,photoH-14,13);x.stroke();
  });
- x.fillStyle=p.ink;x.font='22px Georgia';x.fillText(subtitle||'made with a smile',w/2,h-(subtitle?52:42));
- x.font='13px Arial';x.fillStyle=p.accent;x.fillText('✦  PHOTOBOOTH  ✦',w/2,h-18);
+
+ // Date and photobooth signature.
+ const dateY=h-92;
+ x.fillStyle=ink;x.font='bold 29px Georgia';x.fillText(subtitle,w/2,dateY);
+ x.strokeStyle=gold;x.lineWidth=2;x.beginPath();x.moveTo(w/2-135,dateY-9);x.lineTo(w/2-95,dateY-9);x.moveTo(w/2+95,dateY-9);x.lineTo(w/2+135,dateY-9);x.stroke();
+ diamond(w/2-145,dateY-9,9,gold);diamond(w/2+145,dateY-9,9,gold);
+ x.fillStyle=burgundy;x.font='16px Georgia';x.fillText('✦  SNAP & SMILE PHOTOBOOTH  ✦',w/2,h-55);
  finalCanvas=c;result.innerHTML='';result.appendChild(c);
 }
 
