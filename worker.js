@@ -16,6 +16,7 @@ async function handleUpload(req,env){if(!env.SNAP_SMILE_SETTINGS)return json({er
  const item={id:crypto.randomUUID(),fileId:data.fileId,url:data.url,thumbnailUrl:data.thumbnailUrl||data.url,fileName:data.name||"snap-smile.png",createdAt:Date.now()};await env.SNAP_SMILE_SETTINGS.put("gallery:"+item.id,JSON.stringify(item));await env.SNAP_SMILE_SETTINGS.put(counterKey,String(count+1));const headers={"Set-Cookie":`${VISITOR_COOKIE}=${vid}; Path=/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax`};return json({ok:true,photo:item,remaining:2-count},200,headers)}
 export default {async fetch(request,env){const url=new URL(request.url),path=url.pathname,method=request.method;
  try{
+  if(path==="/api/diag"&&method==="GET")return json({ok:true,bindings:{kv:!!env.SNAP_SMILE_SETTINGS,assets:!!env.ASSETS,imagekitPrivateKey:!!env.IMAGEKIT_PRIVATE_KEY,imagekitPublicKey:!!env.IMAGEKIT_PUBLIC_KEY,imagekitUrlEndpoint:!!env.IMAGEKIT_URL_ENDPOINT,adminPassword:!!env.ADMIN_PASSWORD,adminSecret:!!env.ADMIN_SECRET}});
   if(path==="/api/config"&&method==="GET")return json(await config(env));
   if(path==="/api/gallery"&&method==="GET")return json({photos:await listGallery(env)});
   if(path==="/api/upload"&&method==="POST")return await handleUpload(request,env);
