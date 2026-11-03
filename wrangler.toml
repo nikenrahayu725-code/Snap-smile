@@ -17,6 +17,6 @@ id = "da49c5e961d14fc38ef79ca634b7ec93"
 name = "SNAP_STATE"
 class_name = "SnapSmileState"
 
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["SnapSmileState"]
+[exports.SnapSmileState]
+type = "durable-object"
+storage = "sqlite"
