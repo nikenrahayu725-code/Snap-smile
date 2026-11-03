@@ -1,4 +1,14 @@
-const DEFAULTS={photoCounts:[1,2,3,4],countdowns:[3,5,0],filters:['none','warm','soft','vintage','mono'],frames:['cream','pink','dark','white','wedding'],title:'THE WEDDING OF NIKEN & EGIT',subtitle:'19.12.2026'};
+const DEFAULTS={
+photoCounts:[1,2,3,4],
+countdowns:[3,5,0],
+filters:['none','warm','soft','vintage','mono'],
+frames:[
+'cream','pink','dark','white','wedding',
+'modern-cream','modern-pink','modern-mocha','modern-mono','modern-gold'
+],
+title:'THE WEDDING OF NIKEN & EGIT',
+subtitle:'19.12.2026'
+};
 const ADMIN_COOKIE='snap_admin', VISITOR_COOKIE='snap_visitor', enc=s=>new TextEncoder().encode(s);
 const json=(o,status=200,headers={})=>new Response(JSON.stringify(o),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});
 function b64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
@@ -26,7 +36,7 @@ if(p==='/api/admin/login'&&m==='POST'){if(!env.ADMIN_PASSWORD||!env.ADMIN_SECRET
 if(p==='/api/admin/logout'&&m==='POST')return json({ok:true},200,{'Set-Cookie':`${ADMIN_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`});
 if(p.startsWith('/api/admin/')){if(!await isAdmin(request,env))return json({error:'Silakan login sebagai admin.'},401);
 if(p==='/api/admin/config'&&m==='GET')return json(await config(env));
-if(p==='/api/admin/config'&&m==='PUT'){let c;try{c=await request.json()}catch{return json({error:'Data tidak valid.'},400)}const allowed={photoCounts:[1,2,3,4],countdowns:[0,3,5],filters:['none','warm','soft','vintage','mono'],frames:['cream','pink','dark','white','wedding']};for(const k of Object.keys(allowed)){if(!Array.isArray(c[k])||!c[k].length||c[k].some(v=>!allowed[k].includes((k==='photoCounts'||k==='countdowns')?Number(v):v)))return json({error:'Pilihan '+k+' tidak valid.'},400)}const saved={photoCounts:c.photoCounts.map(Number),countdowns:c.countdowns.map(Number),filters:c.filters,frames:c.frames,title:String(c.title||DEFAULTS.title).slice(0,80),subtitle:String(c.subtitle||DEFAULTS.subtitle).slice(0,40)};const old=await config(env);await env.SNAP_SMILE_SETTINGS.put('public-config',JSON.stringify(saved));if(old.cover)await env.SNAP_SMILE_SETTINGS.put('cover:current',JSON.stringify(old.cover));return json({ok:true})}
+if(p==='/api/admin/config'&&m==='PUT'){let c;try{c=await request.json()}catch{return json({error:'Data tidak valid.'},400)}const allowed={photoCounts:[1,2,3,4],countdowns:[0,3,5],filters:['none','warm','soft','vintage','mono'],frames:['cream','pink','dark','white','wedding','modern-cream','modern-pink','modern-mocha','modern-mono','modern-gold']};for(const k of Object.keys(allowed)){if(!Array.isArray(c[k])||!c[k].length||c[k].some(v=>!allowed[k].includes((k==='photoCounts'||k==='countdowns')?Number(v):v)))return json({error:'Pilihan '+k+' tidak valid.'},400)}const saved={photoCounts:c.photoCounts.map(Number),countdowns:c.countdowns.map(Number),filters:c.filters,frames:c.frames,title:String(c.title||DEFAULTS.title).slice(0,80),subtitle:String(c.subtitle||DEFAULTS.subtitle).slice(0,40)};const old=await config(env);await env.SNAP_SMILE_SETTINGS.put('public-config',JSON.stringify(saved));if(old.cover)await env.SNAP_SMILE_SETTINGS.put('cover:current',JSON.stringify(old.cover));return json({ok:true})}
 if(p==='/api/admin/cover'&&m==='POST'){const form=await request.formData(),file=form.get('file');const d=await uploadImage(env,file,'wedding-cover-'+Date.now(),'/snap-smile-cover');const old=await env.SNAP_SMILE_SETTINGS.get('cover:current','json').catch(()=>null);const cover={fileId:d.fileId,url:d.url,thumbnailUrl:d.thumbnailUrl||d.url,updatedAt:new Date().toISOString()};await env.SNAP_SMILE_SETTINGS.put('cover:current',JSON.stringify(cover));if(old?.fileId){try{await imagekit(env,'/files/'+encodeURIComponent(old.fileId),{method:'DELETE'})}catch{}}return json({ok:true,cover})}
 if(p==='/api/admin/cover'&&m==='DELETE'){const old=await env.SNAP_SMILE_SETTINGS.get('cover:current','json').catch(()=>null);await env.SNAP_SMILE_SETTINGS.delete('cover:current');if(old?.fileId){try{await imagekit(env,'/files/'+encodeURIComponent(old.fileId),{method:'DELETE'})}catch{}}return json({ok:true})}
 if(p==='/api/admin/gallery'&&m==='GET')return json({photos:await getGallery(env)});
