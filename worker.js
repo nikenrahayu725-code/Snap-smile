@@ -32,7 +32,11 @@ if(p==='/api/admin/cover'&&m==='DELETE'){const old=await env.SNAP_SMILE_SETTINGS
 if(p==='/api/admin/gallery'&&m==='GET')return json({photos:await getGallery(env)});
 if(p==='/api/admin/gallery'&&m==='DELETE'){let b={};try{b=await request.json()}catch{}const list=await getGallery(env),ids=new Set((b.all?list.map(x=>x.fileId):(Array.isArray(b.fileIds)?b.fileIds:[])).filter(x=>typeof x==='string'));const deleted=[];for(const photo of list){if(!ids.has(photo.fileId))continue;try{const r=await imagekit(env,'/files/'+encodeURIComponent(photo.fileId),{method:'DELETE'});if(r.ok||r.status===404)deleted.push(photo)}catch{}}const result=await stateCall(env,'/gallery/remove',{fileIds:deleted.map(x=>x.fileId)});if(!result.ok)throw new Error('Foto terhapus di ImageKit tetapi pembaruan galeri gagal. Hubungi admin.');for(const ph of deleted)if(ph.guestId){const n=await getCount(env,ph.guestId);await env.SNAP_SMILE_SETTINGS.put('visitor:'+ph.guestId,String(n),{expirationTtl:60*60*24*180})}return json({ok:true,deleted:deleted.length})}
 }
-if(p==='/admin'||p==='/admin/')return env.ASSETS.fetch(new Request(new URL('/admin.html',u),request));return env.ASSETS.fetch(request);
+if(p==='/'||p==='/index.html')
+return env.ASSETS.fetch(new Request(new URL('/index.html',u),request));
+if(p==='/admin'||p==='/admin/')
+return env.ASSETS.fetch(new Request(new URL('/admin.html',u),request));
+return env.ASSETS.fetch(request);
 }catch(e){return json({error:e?.message||'Terjadi kesalahan server.'},500)}
 }};
 
