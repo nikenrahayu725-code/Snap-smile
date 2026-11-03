@@ -1,6 +1,7 @@
 name = "snap-smile"
 main = "worker.js"
 compatibility_date = "2026-11-02"
+keep_vars = true
 
 [assets]
 directory = "./"
