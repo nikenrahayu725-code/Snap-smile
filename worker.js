@@ -1,555 +1,482 @@
-const DEFAULT_EVENT = 'niken-egit';
+const DEFAULT_EVENT='niken-egit';
 
-const DEFAULTS = {
-  photoCounts: [1, 2, 3, 4],
-  countdowns: [3, 5, 0],
-  filters: ['none', 'warm', 'soft', 'vintage', 'mono'],
-  frames: [
-    'floral-cream',
-    'floral-pink',
-    'floral-maroon',
-    'floral-sage',
-    'floral-mocha',
-    'floral-champagne',
-    'minang-maroon',
-    'minang-cream'
+const DEFAULTS={
+  photoCounts:[1,2,3,4],
+  countdowns:[3,5,0],
+  filters:['none','warm','soft','vintage','mono'],
+  frames:[
+    'floral-cream','floral-pink','floral-maroon','floral-sage',
+    'floral-mocha','floral-champagne','minang-maroon','minang-cream'
   ],
-  title: 'THE WEDDING OF NIKEN & EGIT',
-  weddingLabel: 'THE WEDDING OF',
-  coupleName: 'Niken & Egit',
-  headingFont: 'cinzel',
-  nameFont: 'great-vibes',
-  headingSize: 24,
-  nameSize: 76,
-  subtitle: '19.12.2026',
-  messageHeading: 'Ucapan untuk Niken & Egit'
+  title:'THE WEDDING OF NIKEN & EGIT',
+  weddingLabel:'THE WEDDING OF',
+  coupleName:'Niken & Egit',
+  headingFont:'cinzel',
+  nameFont:'great-vibes',
+  headingSize:24,
+  nameSize:76,
+  subtitle:'19.12.2026',
+  messageHeading:'Ucapan untuk Niken & Egit',
+  textPositions:{
+    heading:{x:0,y:0},
+    name:{x:0,y:0},
+    date:{x:0,y:0}
+  }
 };
 
-const ADMIN_COOKIE = 'snap_admin';
-const VISITOR_COOKIE = 'snap_visitor';
-const enc = s => new TextEncoder().encode(s);
+const ADMIN_COOKIE='snap_admin';
+const VISITOR_COOKIE='snap_visitor';
+const enc=s=>new TextEncoder().encode(s);
 
-const json = (o, status = 200, headers = {}) =>
-  new Response(JSON.stringify(o), {
+const json=(o,status=200,headers={})=>
+  new Response(JSON.stringify(o),{
     status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store',
+    headers:{
+      'Content-Type':'application/json; charset=utf-8',
+      'Cache-Control':'no-store',
       ...headers
     }
   });
 
-function b64url(bytes) {
+function b64url(bytes){
   return btoa(String.fromCharCode(...new Uint8Array(bytes)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .replace(/\+/g,'-')
+    .replace(/\//g,'_')
+    .replace(/=+$/,'');
 }
 
-async function sign(p, secret) {
-  const k = await crypto.subtle.importKey(
+async function sign(p,secret){
+  const k=await crypto.subtle.importKey(
     'raw',
     enc(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
+    {name:'HMAC',hash:'SHA-256'},
     false,
     ['sign']
   );
-
-  return b64url(await crypto.subtle.sign('HMAC', k, enc(p)));
+  return b64url(await crypto.subtle.sign('HMAC',k,enc(p)));
 }
 
-function cookie(req, name) {
-  const m = (req.headers.get('Cookie') || '')
-    .match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
-
-  return m?.[1] || null;
+function cookie(req,name){
+  const m=(req.headers.get('Cookie')||'')
+    .match(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)'));
+  return m?.[1]||null;
 }
 
-async function isAdmin(req, env) {
-  const token = cookie(req, ADMIN_COOKIE);
+async function isAdmin(req,env){
+  const token=cookie(req,ADMIN_COOKIE);
+  if(!token||!env.ADMIN_SECRET)return false;
 
-  if (!token || !env.ADMIN_SECRET) return false;
+  const [p,s]=token.split('.');
+  if(!p||!s)return false;
 
-  const [p, s] = token.split('.');
-  if (!p || !s) return false;
-
-  try {
-    const raw = atob(p.replace(/-/g, '+').replace(/_/g, '/'));
-
-    if (JSON.parse(raw).exp < Date.now()) return false;
-
-    return await sign(p, env.ADMIN_SECRET) === s;
-  } catch {
+  try{
+    const raw=atob(p.replace(/-/g,'+').replace(/_/g,'/'));
+    if(JSON.parse(raw).exp<Date.now())return false;
+    return await sign(p,env.ADMIN_SECRET)===s;
+  }catch{
     return false;
   }
 }
 
-function eventId(u) {
-  const id = (u.searchParams.get('event') || DEFAULT_EVENT).toLowerCase();
-
+function eventId(u){
+  const id=(u.searchParams.get('event')||DEFAULT_EVENT).toLowerCase();
   return /^[a-z0-9][a-z0-9-]{1,39}$/.test(id)
-    ? id
-    : DEFAULT_EVENT;
+    ?id
+    :DEFAULT_EVENT;
 }
 
-const ek = (id, s) => `event:${id}:${s}`;
+const ek=(id,s)=>`event:${id}:${s}`;
 
-async function getEvents(env) {
-  let a = [];
+async function getEvents(env){
+  let a=[];
+  try{
+    a=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('events:list')||'[]');
+  }catch{}
 
-  try {
-    a = JSON.parse(
-      await env.SNAP_SMILE_SETTINGS.get('events:list') || '[]'
-    );
-  } catch {}
-
-  const base = {
-    id: DEFAULT_EVENT,
-    name: 'The Wedding of Niken & Egit',
-    date: '19.12.2026',
-    createdAt: '2026-11-03T00:00:00.000Z',
-    active: true
+  const base={
+    id:DEFAULT_EVENT,
+    name:'The Wedding of Niken & Egit',
+    date:'19.12.2026',
+    createdAt:'2026-11-03T00:00:00.000Z',
+    active:true
   };
 
-  return [
-    base,
-    ...a.filter(x => x.id !== DEFAULT_EVENT)
-  ];
+  return [base,...a.filter(x=>x.id!==DEFAULT_EVENT)];
 }
 
-async function config(env, event = DEFAULT_EVENT) {
-  let c = {};
+async function config(env,event=DEFAULT_EVENT){
+  let c={};
 
-  try {
-    c = JSON.parse(
-      await env.SNAP_SMILE_SETTINGS.get(ek(event, 'config')) || '{}'
+  try{
+    c=JSON.parse(
+      await env.SNAP_SMILE_SETTINGS.get(ek(event,'config'))||'{}'
     );
-  } catch {}
+  }catch{}
 
-  let legacy = {};
+  let legacy={};
 
-  if (event === DEFAULT_EVENT) {
-    try {
-      legacy = JSON.parse(
-        await env.SNAP_SMILE_SETTINGS.get('public-config') || '{}'
+  if(event===DEFAULT_EVENT){
+    try{
+      legacy=JSON.parse(
+        await env.SNAP_SMILE_SETTINGS.get('public-config')||'{}'
       );
-    } catch {}
+    }catch{}
   }
 
-  if (event === DEFAULT_EVENT && !Object.keys(c).length) {
-    c = legacy;
+  if(event===DEFAULT_EVENT&&!Object.keys(c).length){
+    c=legacy;
   }
 
-  let cover = await env.SNAP_SMILE_SETTINGS
-    .get(ek(event, 'cover'), 'json')
-    .catch(() => null);
+  let cover=await env.SNAP_SMILE_SETTINGS
+    .get(ek(event,'cover'),'json')
+    .catch(()=>null);
 
-  if (!cover && event === DEFAULT_EVENT) {
-    cover =
-      await env.SNAP_SMILE_SETTINGS.get('cover:current', 'json')
-        .catch(() => null) ||
-      await env.SNAP_SMILE_SETTINGS.get('cover', 'json')
-        .catch(() => null) ||
-      legacy.cover ||
-      c.cover ||
+  if(!cover&&event===DEFAULT_EVENT){
+    cover=
+      await env.SNAP_SMILE_SETTINGS.get('cover:current','json').catch(()=>null)||
+      await env.SNAP_SMILE_SETTINGS.get('cover','json').catch(()=>null)||
+      legacy.cover||
+      c.cover||
       null;
   }
 
-  const merged = {
+  const merged={
     ...DEFAULTS,
     ...c,
-    ...(cover ? { cover } : {})
+    ...(cover?{cover}:{})
   };
 
-  const approved = new Set(DEFAULTS.frames);
+  const approved=new Set(DEFAULTS.frames);
+  const selected=Array.isArray(c.frames)
+    ?c.frames.filter(x=>approved.has(x))
+    :[];
 
-  const selected = Array.isArray(c.frames)
-    ? c.frames.filter(x => approved.has(x))
-    : [];
-
-  merged.frames = selected.length
-    ? selected
-    : DEFAULTS.frames;
+  merged.frames=selected.length?selected:DEFAULTS.frames;
 
   return merged;
 }
 
-async function photos(env) {
-  try {
-    const v = JSON.parse(
-      await env.SNAP_SMILE_SETTINGS.get('gallery:photos') || '[]'
+async function photos(env){
+  try{
+    const v=JSON.parse(
+      await env.SNAP_SMILE_SETTINGS.get('gallery:photos')||'[]'
     );
-
-    return Array.isArray(v) ? v : [];
-  } catch {
+    return Array.isArray(v)?v:[];
+  }catch{
     return [];
   }
 }
 
-async function imagekit(env, path, opts = {}) {
-  if (!env.IMAGEKIT_PRIVATE_KEY) {
+async function imagekit(env,path,opts={}){
+  if(!env.IMAGEKIT_PRIVATE_KEY){
     throw new Error('ImageKit belum dikonfigurasi.');
   }
 
-  return fetch('https://api.imagekit.io/v1' + path, {
+  return fetch('https://api.imagekit.io/v1'+path,{
     ...opts,
-    headers: {
-      Authorization: 'Basic ' +
-        btoa(env.IMAGEKIT_PRIVATE_KEY + ':'),
-      ...(opts.headers || {})
+    headers:{
+      Authorization:'Basic '+btoa(env.IMAGEKIT_PRIVATE_KEY+':'),
+      ...(opts.headers||{})
     }
   });
 }
 
-async function uploadImage(env, file, name, folder) {
-  if (
-    !file ||
-    typeof file === 'string' ||
-    !file.type?.startsWith('image/')
-  ) {
+async function uploadImage(env,file,name,folder){
+  if(!file||typeof file==='string'||!file.type?.startsWith('image/')){
     throw new Error('File foto tidak valid.');
   }
 
-  if (file.size > 8 * 1024 * 1024) {
+  if(file.size>8*1024*1024){
     throw new Error('Ukuran foto maksimal 8 MB.');
   }
 
-  const fd = new FormData();
+  const fd=new FormData();
+  fd.append('file',file);
+  fd.append('fileName',name);
+  fd.append('folder',folder);
 
-  fd.append('file', file);
-  fd.append('fileName', name);
-  fd.append('folder', folder);
-
-  const r = await imagekit(env, '/files/upload', {
-    method: 'POST',
-    body: fd
+  const r=await imagekit(env,'/files/upload',{
+    method:'POST',
+    body:fd
   });
 
-  let d = {};
+  let d={};
+  try{
+    d=await r.json();
+  }catch{}
 
-  try {
-    d = await r.json();
-  } catch {}
-
-  if (!r.ok) {
-    throw new Error(d.message || 'Upload ke penyimpanan gagal.');
+  if(!r.ok){
+    throw new Error(d.message||'Upload ke penyimpanan gagal.');
   }
 
   return d;
 }
 
-function visitorCookie(id, event) {
+function visitorCookie(id,event){
   return `snap_visitor_${event}=${id}; Path=/; Max-Age=15552000; Secure; SameSite=Lax`;
 }
 
-async function getGuest(env, id) {
-  if (!id) return null;
-
-  try {
-    return await env.SNAP_SMILE_SETTINGS.get('guest:' + id, 'json');
-  } catch {
+async function getGuest(env,id){
+  if(!id)return null;
+  try{
+    return await env.SNAP_SMILE_SETTINGS.get('guest:'+id,'json');
+  }catch{
     return null;
   }
 }
 
-async function stateCall(env, path, body, event = DEFAULT_EVENT) {
-  if (!env.SNAP_STATE) {
+async function stateCall(env,path,body,event=DEFAULT_EVENT){
+  if(!env.SNAP_STATE){
     throw new Error('Binding SNAP_STATE belum dikonfigurasi.');
   }
 
-  const id = env.SNAP_STATE.idFromName(
-    event === DEFAULT_EVENT
-      ? 'snap-smile-global'
-      : 'snap-smile-' + event
+  const id=env.SNAP_STATE.idFromName(
+    event===DEFAULT_EVENT
+      ?'snap-smile-global'
+      :'snap-smile-'+event
   );
 
-  return env.SNAP_STATE.get(id).fetch('https://state' + path, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: body ? JSON.stringify(body) : undefined
+  return env.SNAP_STATE.get(id).fetch('https://state'+path,{
+    method:body?'POST':'GET',
+    headers:{'Content-Type':'application/json'},
+    body:body?JSON.stringify(body):undefined
   });
 }
 
-async function getCount(env, id, event = DEFAULT_EVENT) {
-  const r = await stateCall(
+async function getCount(env,id,event=DEFAULT_EVENT){
+  const r=await stateCall(
     env,
-    '/count?deviceId=' + encodeURIComponent(id),
+    '/count?deviceId='+encodeURIComponent(id),
     null,
     event
   );
 
-  if (!r.ok) throw new Error('Gagal membaca kuota.');
+  if(!r.ok)throw new Error('Gagal membaca kuota.');
 
   return (await r.json()).count;
 }
 
-async function getGallery(env, event = DEFAULT_EVENT) {
-  const legacy = event === DEFAULT_EVENT
-    ? await photos(env)
-    : [];
+async function getGallery(env,event=DEFAULT_EVENT){
+  const legacy=event===DEFAULT_EVENT?await photos(env):[];
 
-  const r = await stateCall(
+  const r=await stateCall(
     env,
     '/gallery/init',
-    { legacy },
+    {legacy},
     event
   );
 
-  if (!r.ok) throw new Error('Gagal membaca galeri.');
+  if(!r.ok)throw new Error('Gagal membaca galeri.');
 
   return (await r.json()).photos;
 }
 
-export default {
-  async fetch(request, env) {
-    const u = new URL(request.url);
-    const p = u.pathname;
-    const m = request.method;
-    const event = eventId(u);
-    const visitorCookieName = 'snap_visitor_' + event;
+export default{
+  async fetch(request,env){
+    const u=new URL(request.url);
+    const p=u.pathname;
+    const m=request.method;
+    const event=eventId(u);
+    const visitorCookieName='snap_visitor_'+event;
 
-    try {
+    try{
 
-      // DIAGNOSTIK
-      if (p === '/api/diag') {
+      if(p==='/api/diag'){
         return json({
-          ok: true,
-          bindings: {
-            kv: !!env.SNAP_SMILE_SETTINGS,
-            assets: !!env.ASSETS,
-            state: !!env.SNAP_STATE,
-            imagekitPrivateKey: !!env.IMAGEKIT_PRIVATE_KEY,
-            imagekitPublicKey: !!env.IMAGEKIT_PUBLIC_KEY,
-            imagekitUrlEndpoint: !!env.IMAGEKIT_URL_ENDPOINT,
-            adminPassword: !!env.ADMIN_PASSWORD,
-            adminSecret: !!env.ADMIN_SECRET
+          ok:true,
+          bindings:{
+            kv:!!env.SNAP_SMILE_SETTINGS,
+            assets:!!env.ASSETS,
+            state:!!env.SNAP_STATE,
+            imagekitPrivateKey:!!env.IMAGEKIT_PRIVATE_KEY,
+            imagekitPublicKey:!!env.IMAGEKIT_PUBLIC_KEY,
+            imagekitUrlEndpoint:!!env.IMAGEKIT_URL_ENDPOINT,
+            adminPassword:!!env.ADMIN_PASSWORD,
+            adminSecret:!!env.ADMIN_SECRET
           }
         });
       }
 
-      // KONFIGURASI PUBLIK
-      if (p === '/api/config' && m === 'GET') {
+      if(p==='/api/config'&&m==='GET'){
         return json({
-          ...await config(env, event),
-          eventId: event
+          ...await config(env,event),
+          eventId:event
         });
       }
 
-      // DATA TAMU
-      if (p === '/api/guest/me' && m === 'GET') {
-        const id =
-          cookie(request, visitorCookieName) ||
-          (event === DEFAULT_EVENT
-            ? cookie(request, VISITOR_COOKIE)
-            : null);
+      if(p==='/api/guest/me'&&m==='GET'){
+        const id=
+          cookie(request,visitorCookieName)||
+          (event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null);
 
-        const g = await getGuest(env, id);
+        const g=await getGuest(env,id);
 
-        if (!g || (g.eventId || DEFAULT_EVENT) !== event) {
-          return json({ guest: null });
+        if(!g||(g.eventId||DEFAULT_EVENT)!==event){
+          return json({guest:null});
         }
 
         return json({
-          guest: {
+          guest:{
             ...g,
-            remaining: Math.max(
+            remaining:Math.max(
               0,
-              3 - await getCount(env, g.deviceId || id, event)
+              3-await getCount(env,g.deviceId||id,event)
             )
           }
         });
       }
 
-      // MULAI SESI TAMU
-      if (p === '/api/guest/start' && m === 'POST') {
-        let b = {};
+      if(p==='/api/guest/start'&&m==='POST'){
+        let b={};
+        try{
+          b=await request.json();
+        }catch{}
 
-        try {
-          b = await request.json();
-        } catch {}
-
-        const name = String(b.name || '')
+        const name=String(b.name||'')
           .trim()
-          .replace(/[<>]/g, '')
-          .slice(0, 60);
+          .replace(/[<>]/g,'')
+          .slice(0,60);
 
-        const deviceId = String(b.deviceId || '').slice(0, 100);
+        const deviceId=String(b.deviceId||'').slice(0,100);
 
-        if (name.length < 2) {
-          return json({
-            error: 'Nama minimal 2 karakter.'
-          }, 400);
+        if(name.length<2){
+          return json({error:'Nama minimal 2 karakter.'},400);
         }
 
-        if (!/^[A-Za-z0-9_-]{16,100}$/.test(deviceId)) {
+        if(!/^[A-Za-z0-9_-]{16,100}$/.test(deviceId)){
           return json({
-            error: 'Identitas perangkat tidak valid. Muat ulang halaman.'
-          }, 400);
+            error:'Identitas perangkat tidak valid. Muat ulang halaman.'
+          },400);
         }
 
-        const id = crypto.randomUUID();
+        const id=crypto.randomUUID();
 
-        const g = {
+        const g={
           id,
           name,
           deviceId,
-          eventId: event,
-          createdAt: new Date().toISOString()
+          eventId:event,
+          createdAt:new Date().toISOString()
         };
 
         await env.SNAP_SMILE_SETTINGS.put(
-          'guest:' + id,
+          'guest:'+id,
           JSON.stringify(g),
-          { expirationTtl: 60 * 60 * 24 * 180 }
+          {expirationTtl:60*60*24*180}
         );
 
         return json({
-          ok: true,
-          guest: {
+          ok:true,
+          guest:{
             ...g,
-            remaining: Math.max(
+            remaining:Math.max(
               0,
-              3 - await getCount(env, deviceId, event)
+              3-await getCount(env,deviceId,event)
             )
           }
-        }, 200, {
-          'Set-Cookie': visitorCookie(id, event)
+        },200,{
+          'Set-Cookie':visitorCookie(id,event)
         });
       }
 
-      // GALERI PUBLIK
-      if (p === '/api/gallery' && m === 'GET') {
-        const list = await getGallery(env, event);
+      if(p==='/api/gallery'&&m==='GET'){
+        const list=await getGallery(env,event);
 
         return json({
-          photos: list.map(({
-            fileId,
-            url,
-            thumbnailUrl,
-            createdAt,
-            guestName,
-            message
-          }) => ({
-            fileId,
-            url,
-            thumbnailUrl,
-            createdAt,
-            guestName,
-            message
+          photos:list.map(({
+            fileId,url,thumbnailUrl,createdAt,guestName,message
+          })=>({
+            fileId,url,thumbnailUrl,createdAt,guestName,message
           }))
         });
       }
 
-      // UPLOAD FOTO
-      if (p === '/api/upload' && m === 'POST') {
-        if (
-          !env.SNAP_SMILE_SETTINGS ||
-          !env.IMAGEKIT_PRIVATE_KEY
-        ) {
+      if(p==='/api/upload'&&m==='POST'){
+        if(!env.SNAP_SMILE_SETTINGS||!env.IMAGEKIT_PRIVATE_KEY){
           return json({
-            error: 'Layanan galeri belum tersambung.'
-          }, 503);
+            error:'Layanan galeri belum tersambung.'
+          },503);
         }
 
-        const id =
-          cookie(request, visitorCookieName) ||
-          (event === DEFAULT_EVENT
-            ? cookie(request, VISITOR_COOKIE)
-            : null);
+        const id=
+          cookie(request,visitorCookieName)||
+          (event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null);
 
-        const guest = await getGuest(env, id);
+        const guest=await getGuest(env,id);
 
-        if (
-          !id ||
-          !guest ||
-          (guest.eventId || DEFAULT_EVENT) !== event
-        ) {
+        if(!id||!guest||(guest.eventId||DEFAULT_EVENT)!==event){
           return json({
-            error: 'Masukkan nama tamu untuk acara ini terlebih dahulu.'
-          }, 401);
+            error:'Masukkan nama tamu untuk acara ini terlebih dahulu.'
+          },401);
         }
 
-        const form = await request.formData();
-        const file = form.get('file');
-
-        const message = String(form.get('message') || '')
+        const form=await request.formData();
+        const file=form.get('file');
+        const message=String(form.get('message')||'')
           .trim()
-          .slice(0, 500);
+          .slice(0,500);
 
-        const deviceId = guest.deviceId || id;
+        const deviceId=guest.deviceId||id;
 
-        const reserve = await stateCall(
+        const reserve=await stateCall(
           env,
           '/reserve',
-          { deviceId },
+          {deviceId},
           event
         );
 
-        const reserved = await reserve.json();
+        const reserved=await reserve.json();
 
-        if (!reserve.ok) {
+        if(!reserve.ok){
           return json(
-            { error: reserved.error || 'Kuota unggahan habis.' },
+            {error:reserved.error||'Kuota unggahan habis.'},
             reserve.status
           );
         }
 
         let d;
 
-        try {
-          d = await uploadImage(
+        try{
+          d=await uploadImage(
             env,
             file,
-            'snap-smile-' + event + '-' + Date.now() + '.png',
-            '/snap-smile/' + event
+            'snap-smile-'+event+'-'+Date.now()+'.png',
+            '/snap-smile/'+event
           );
-        } catch (e) {
-          await stateCall(
-            env,
-            '/release',
-            { deviceId },
-            event
-          );
-
+        }catch(e){
+          await stateCall(env,'/release',{deviceId},event);
           throw e;
         }
 
-        const photo = {
-          fileId: d.fileId,
-          url: d.url,
-          thumbnailUrl: d.thumbnailUrl || d.url,
-          createdAt: new Date().toISOString(),
-          guestId: id,
+        const photo={
+          fileId:d.fileId,
+          url:d.url,
+          thumbnailUrl:d.thumbnailUrl||d.url,
+          createdAt:new Date().toISOString(),
+          guestId:id,
           deviceId,
-          eventId: event,
-          guestName: guest.name,
+          eventId:event,
+          guestName:guest.name,
           message
         };
 
-        const add = await stateCall(
+        const add=await stateCall(
           env,
           '/gallery/add',
-          { photo },
+          {photo},
           event
         );
 
-        if (!add.ok) {
-          try {
+        if(!add.ok){
+          try{
             await imagekit(
               env,
-              '/files/' + encodeURIComponent(d.fileId),
-              { method: 'DELETE' }
+              '/files/'+encodeURIComponent(d.fileId),
+              {method:'DELETE'}
             );
-          } catch {}
+          }catch{}
 
-          await stateCall(
-            env,
-            '/release',
-            { deviceId },
-            event
-          );
+          await stateCall(env,'/release',{deviceId},event);
 
           throw new Error(
             'Gagal menyimpan data galeri. Silakan coba lagi.'
@@ -557,115 +484,87 @@ export default {
         }
 
         return json({
-          ok: true,
+          ok:true,
           photo,
-          remaining: reserved.remaining
+          remaining:reserved.remaining
         });
       }
 
-      // LOGIN ADMIN
-      if (p === '/api/admin/login' && m === 'POST') {
-        if (!env.ADMIN_PASSWORD || !env.ADMIN_SECRET) {
+      if(p==='/api/admin/login'&&m==='POST'){
+        if(!env.ADMIN_PASSWORD||!env.ADMIN_SECRET){
           return json({
-            error: 'ADMIN_PASSWORD dan ADMIN_SECRET belum tersedia.'
-          }, 503);
+            error:'ADMIN_PASSWORD dan ADMIN_SECRET belum tersedia.'
+          },503);
         }
 
-        let b = {};
+        let b={};
+        try{
+          b=await request.json();
+        }catch{}
 
-        try {
-          b = await request.json();
-        } catch {}
-
-        if (b.password !== env.ADMIN_PASSWORD) {
-          return json({ error: 'Password salah.' }, 401);
+        if(b.password!==env.ADMIN_PASSWORD){
+          return json({error:'Password salah.'},401);
         }
 
-        const token = b64url(
-          enc(JSON.stringify({
-            exp: Date.now() + 28800000
-          }))
+        const token=b64url(
+          enc(JSON.stringify({exp:Date.now()+28800000}))
         );
 
-        const sig = await sign(token, env.ADMIN_SECRET);
+        const sig=await sign(token,env.ADMIN_SECRET);
 
-        return json({ ok: true }, 200, {
+        return json({ok:true},200,{
           'Set-Cookie':
             `${ADMIN_COOKIE}=${token}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`
         });
       }
 
-      // LOGOUT ADMIN
-      if (p === '/api/admin/logout' && m === 'POST') {
-        return json({ ok: true }, 200, {
+      if(p==='/api/admin/logout'&&m==='POST'){
+        return json({ok:true},200,{
           'Set-Cookie':
             `${ADMIN_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
         });
       }
 
-      // SEMUA ROUTE ADMIN WAJIB LOGIN
-      if (p.startsWith('/api/admin/')) {
-        if (!await isAdmin(request, env)) {
-          return json({
-            error: 'Silakan login sebagai admin.'
-          }, 401);
+      if(p.startsWith('/api/admin/')){
+        if(!await isAdmin(request,env)){
+          return json({error:'Silakan login sebagai admin.'},401);
         }
 
-        // DAFTAR EVENT
-        if (p === '/api/admin/events' && m === 'GET') {
-          return json({
-            events: await getEvents(env)
-          });
+        if(p==='/api/admin/events'&&m==='GET'){
+          return json({events:await getEvents(env)});
         }
 
-        // TAMBAH EVENT
-        if (p === '/api/admin/events' && m === 'POST') {
-          let b = {};
+        if(p==='/api/admin/events'&&m==='POST'){
+          let b={};
+          try{
+            b=await request.json();
+          }catch{}
 
-          try {
-            b = await request.json();
-          } catch {}
+          const name=String(b.name||'').trim().slice(0,80);
+          const date=String(b.date||'').trim().slice(0,40);
 
-          const name = String(b.name || '')
-            .trim()
-            .slice(0, 80);
+          let id=String(
+            b.id||
+            name.toLowerCase().replace(/[^a-z0-9]+/g,'-')
+              .replace(/^-|-$/g,'')
+          ).toLowerCase().slice(0,40);
 
-          const date = String(b.date || '')
-            .trim()
-            .slice(0, 40);
-
-          let id = String(
-            b.id ||
-            name.toLowerCase()
-              .replace(/[^a-z0-9]+/g, '-')
-              .replace(/^-|-$/g, '')
-          )
-            .toLowerCase()
-            .slice(0, 40);
-
-          if (
-            !name ||
-            !/^[a-z0-9][a-z0-9-]{1,39}$/.test(id)
-          ) {
-            return json({
-              error: 'Nama atau ID acara tidak valid.'
-            }, 400);
+          if(!name||!/^[a-z0-9][a-z0-9-]{1,39}$/.test(id)){
+            return json({error:'Nama atau ID acara tidak valid.'},400);
           }
 
-          const a = await getEvents(env);
+          const a=await getEvents(env);
 
-          if (a.some(x => x.id === id)) {
-            return json({
-              error: 'ID acara sudah digunakan.'
-            }, 409);
+          if(a.some(x=>x.id===id)){
+            return json({error:'ID acara sudah digunakan.'},409);
           }
 
-          const e = {
+          const e={
             id,
             name,
             date,
-            createdAt: new Date().toISOString(),
-            active: true
+            createdAt:new Date().toISOString(),
+            active:true
           };
 
           a.push(e);
@@ -676,558 +575,481 @@ export default {
           );
 
           await env.SNAP_SMILE_SETTINGS.put(
-            ek(id, 'config'),
+            ek(id,'config'),
             JSON.stringify({
               ...DEFAULTS,
-              title: 'THE WEDDING OF ' + name.toUpperCase(),
-              weddingLabel: 'THE WEDDING OF',
-              coupleName: name,
-              subtitle: date || DEFAULTS.subtitle,
-              messageHeading: 'Ucapan untuk ' + name
+              title:'THE WEDDING OF '+name.toUpperCase(),
+              weddingLabel:'THE WEDDING OF',
+              coupleName:name,
+              subtitle:date||DEFAULTS.subtitle,
+              messageHeading:'Ucapan untuk '+name
             })
           );
 
-          return json({
-            ok: true,
-            event: e
-          });
+          return json({ok:true,event:e});
         }
 
-        // HAPUS / ARSIPKAN EVENT
-        if (p === '/api/admin/events' && m === 'DELETE') {
-          let b = {};
+        if(p==='/api/admin/events'&&m==='DELETE'){
+          let b={};
+          try{
+            b=await request.json();
+          }catch{}
 
-          try {
-            b = await request.json();
-          } catch {}
-
-          if (!b.id || b.id === DEFAULT_EVENT) {
+          if(!b.id||b.id===DEFAULT_EVENT){
             return json({
-              error: 'Acara utama tidak dapat dihapus.'
-            }, 400);
+              error:'Acara utama tidak dapat dihapus.'
+            },400);
           }
 
-          const a = await getEvents(env);
+          const a=await getEvents(env);
 
-          if (!a.some(x => x.id === b.id)) {
-            return json({
-              error: 'Acara tidak ditemukan.'
-            }, 404);
+          if(!a.some(x=>x.id===b.id)){
+            return json({error:'Acara tidak ditemukan.'},404);
           }
 
           await env.SNAP_SMILE_SETTINGS.put(
             'events:list',
-            JSON.stringify(a.filter(x => x.id !== b.id))
+            JSON.stringify(a.filter(x=>x.id!==b.id))
           );
 
           return json({
-            ok: true,
-            note: 'Acara diarsipkan; file foto tidak dihapus otomatis.'
+            ok:true,
+            note:'Acara diarsipkan; file foto tidak dihapus otomatis.'
           });
         }
 
-        // BACA KONFIGURASI ADMIN
-        if (p === '/api/admin/config' && m === 'GET') {
-          return json(await config(env, event));
+        if(p==='/api/admin/config'&&m==='GET'){
+          return json(await config(env,event));
         }
 
-        // SIMPAN KONFIGURASI ADMIN
-        if (p === '/api/admin/config' && m === 'PUT') {
+        if(p==='/api/admin/config'&&m==='PUT'){
           let c;
 
-          try {
-            c = await request.json();
-          } catch {
-            return json({
-              error: 'Data tidak valid.'
-            }, 400);
+          try{
+            c=await request.json();
+          }catch{
+            return json({error:'Data tidak valid.'},400);
           }
 
-          const allowed = {
-            photoCounts: [1, 2, 3, 4],
-            countdowns: [0, 3, 5],
-            filters: ['none', 'warm', 'soft', 'vintage', 'mono'],
-            frames: [
-              'floral-cream',
-              'floral-pink',
-              'floral-maroon',
-              'floral-sage',
-              'floral-mocha',
-              'floral-champagne',
-              'minang-maroon',
-              'minang-cream'
+          const allowed={
+            photoCounts:[1,2,3,4],
+            countdowns:[0,3,5],
+            filters:['none','warm','soft','vintage','mono'],
+            frames:[
+              'floral-cream','floral-pink','floral-maroon',
+              'floral-sage','floral-mocha','floral-champagne',
+              'minang-maroon','minang-cream'
             ]
           };
 
-          for (const k of Object.keys(allowed)) {
-            if (
-              !Array.isArray(c[k]) ||
-              !c[k].length ||
-              c[k].some(v =>
+          for(const k of Object.keys(allowed)){
+            if(
+              !Array.isArray(c[k])||
+              !c[k].length||
+              c[k].some(v=>
                 !allowed[k].includes(
-                  (k === 'photoCounts' || k === 'countdowns')
-                    ? Number(v)
-                    : v
+                  (k==='photoCounts'||k==='countdowns')
+                    ?Number(v)
+                    :v
                 )
               )
-            ) {
-              return json({
-                error: 'Pilihan ' + k + ' tidak valid.'
-              }, 400);
+            ){
+              return json({error:'Pilihan '+k+' tidak valid.'},400);
             }
           }
 
-          const coupleName = String(
-            c.coupleName ||
-            String(c.title || DEFAULTS.title)
-              .replace(/^the wedding of\s*/i, '')
+          const coupleName=String(
+            c.coupleName||
+            String(c.title||DEFAULTS.title)
+              .replace(/^the wedding of\s*/i,'')
               .trim()
-          ).slice(0, 60);
+          ).slice(0,60);
 
-          const saved = {
-            photoCounts: c.photoCounts.map(Number),
-            countdowns: c.countdowns.map(Number),
-            filters: c.filters,
-            frames: c.frames,
+          const textPositions=Object.fromEntries(
+            ['heading','name','date'].map(k=>{
+              const v=c.textPositions?.[k]||{};
 
-            title: String(
-              c.title || ('THE WEDDING OF ' + coupleName)
-            ).slice(0, 100),
+              return [
+                k,
+                {
+                  x:Math.max(-90,Math.min(90,Number(v.x)||0)),
+                  y:Math.max(-90,Math.min(90,Number(v.y)||0))
+                }
+              ];
+            })
+          );
 
-            weddingLabel: String(
-              c.weddingLabel || 'THE WEDDING OF'
-            ).slice(0, 50),
+          const saved={
+            photoCounts:c.photoCounts.map(Number),
+            countdowns:c.countdowns.map(Number),
+            filters:c.filters,
+            frames:c.frames,
+
+            title:String(
+              c.title||('THE WEDDING OF '+coupleName)
+            ).slice(0,100),
+
+            weddingLabel:String(
+              c.weddingLabel||'THE WEDDING OF'
+            ).slice(0,50),
 
             coupleName,
 
-            headingFont: [
-              'cinzel',
-              'playfair-display',
-              'cormorant-garamond',
-              'georgia',
-              'great-vibes'
+            headingFont:[
+              'cinzel','playfair-display',
+              'cormorant-garamond','georgia','great-vibes'
             ].includes(c.headingFont)
-              ? c.headingFont
-              : 'cinzel',
+              ?c.headingFont
+              :'cinzel',
 
-            nameFont: [
-              'great-vibes',
-              'alex-brush',
-              'allura',
-              'parisienne',
-              'pinyon-script',
-              'playfair-display',
-              'cormorant-garamond',
-              'cinzel'
+            nameFont:[
+              'great-vibes','alex-brush','allura',
+              'parisienne','pinyon-script',
+              'playfair-display','cormorant-garamond','cinzel'
             ].includes(c.nameFont)
-              ? c.nameFont
-              : 'great-vibes',
+              ?c.nameFont
+              :'great-vibes',
 
-            headingSize: Math.max(
+            headingSize:Math.max(
               12,
-              Math.min(54, Number(c.headingSize) || 24)
+              Math.min(54,Number(c.headingSize)||24)
             ),
 
-            nameSize: Math.max(
+            nameSize:Math.max(
               24,
-              Math.min(120, Number(c.nameSize) || 76)
+              Math.min(120,Number(c.nameSize)||76)
             ),
 
-            subtitle: String(
-              c.subtitle || DEFAULTS.subtitle
-            ).slice(0, 40),
+            subtitle:String(
+              c.subtitle||DEFAULTS.subtitle
+            ).slice(0,40),
 
-            messageHeading: String(
-              c.messageHeading ||
-              ('Ucapan untuk ' + coupleName)
-            ).slice(0, 100)
+            messageHeading:String(
+              c.messageHeading||('Ucapan untuk '+coupleName)
+            ).slice(0,100),
+
+            textPositions
           };
 
           await env.SNAP_SMILE_SETTINGS.put(
-            ek(event, 'config'),
+            ek(event,'config'),
             JSON.stringify(saved)
           );
 
-          return json({ ok: true });
+          return json({ok:true});
         }
 
-        // UPLOAD FOTO SAMPUL
-        if (p === '/api/admin/cover' && m === 'POST') {
-          const form = await request.formData();
-          const file = form.get('file');
+        if(p==='/api/admin/cover'&&m==='POST'){
+          const form=await request.formData();
+          const file=form.get('file');
 
-          const d = await uploadImage(
+          const d=await uploadImage(
             env,
             file,
-            'wedding-cover-' + Date.now(),
-            '/snap-smile-cover/' + event
+            'wedding-cover-'+Date.now(),
+            '/snap-smile-cover/'+event
           );
 
-          const old = await env.SNAP_SMILE_SETTINGS
-            .get(ek(event, 'cover'), 'json')
-            .catch(() => null);
+          const old=await env.SNAP_SMILE_SETTINGS
+            .get(ek(event,'cover'),'json')
+            .catch(()=>null);
 
-          const cover = {
-            fileId: d.fileId,
-            url: d.url,
-            thumbnailUrl: d.thumbnailUrl || d.url,
-            updatedAt: new Date().toISOString()
+          const cover={
+            fileId:d.fileId,
+            url:d.url,
+            thumbnailUrl:d.thumbnailUrl||d.url,
+            updatedAt:new Date().toISOString()
           };
 
           await env.SNAP_SMILE_SETTINGS.put(
-            ek(event, 'cover'),
+            ek(event,'cover'),
             JSON.stringify(cover)
           );
 
-          if (old?.fileId) {
-            try {
+          if(old?.fileId){
+            try{
               await imagekit(
                 env,
-                '/files/' + encodeURIComponent(old.fileId),
-                { method: 'DELETE' }
+                '/files/'+encodeURIComponent(old.fileId),
+                {method:'DELETE'}
               );
-            } catch {}
+            }catch{}
           }
 
-          return json({
-            ok: true,
-            cover
-          });
+          return json({ok:true,cover});
         }
 
-        // HAPUS FOTO SAMPUL
-        if (p === '/api/admin/cover' && m === 'DELETE') {
-          const old = await env.SNAP_SMILE_SETTINGS
-            .get(ek(event, 'cover'), 'json')
-            .catch(() => null);
+        if(p==='/api/admin/cover'&&m==='DELETE'){
+          const old=await env.SNAP_SMILE_SETTINGS
+            .get(ek(event,'cover'),'json')
+            .catch(()=>null);
 
-          await env.SNAP_SMILE_SETTINGS.delete(
-            ek(event, 'cover')
-          );
+          await env.SNAP_SMILE_SETTINGS.delete(ek(event,'cover'));
 
-          if (old?.fileId) {
-            try {
+          if(old?.fileId){
+            try{
               await imagekit(
                 env,
-                '/files/' + encodeURIComponent(old.fileId),
-                { method: 'DELETE' }
+                '/files/'+encodeURIComponent(old.fileId),
+                {method:'DELETE'}
               );
-            } catch {}
+            }catch{}
           }
 
-          return json({ ok: true });
+          return json({ok:true});
         }
 
-        // GALERI ADMIN
-        if (p === '/api/admin/gallery' && m === 'GET') {
-          return json({
-            photos: await getGallery(env, event)
-          });
+        if(p==='/api/admin/gallery'&&m==='GET'){
+          return json({photos:await getGallery(env,event)});
         }
 
-        // HAPUS FOTO GALERI
-        if (p === '/api/admin/gallery' && m === 'DELETE') {
-          let b = {};
+        if(p==='/api/admin/gallery'&&m==='DELETE'){
+          let b={};
+          try{
+            b=await request.json();
+          }catch{}
 
-          try {
-            b = await request.json();
-          } catch {}
+          const list=await getGallery(env,event);
 
-          const list = await getGallery(env, event);
-
-          const ids = new Set(
+          const ids=new Set(
             (
               b.all
-                ? list.map(x => x.fileId)
-                : (Array.isArray(b.fileIds) ? b.fileIds : [])
-            ).filter(x => typeof x === 'string')
+                ?list.map(x=>x.fileId)
+                :(Array.isArray(b.fileIds)?b.fileIds:[])
+            ).filter(x=>typeof x==='string')
           );
 
-          const deleted = [];
+          const deleted=[];
 
-          for (const photo of list) {
-            if (!ids.has(photo.fileId)) continue;
+          for(const photo of list){
+            if(!ids.has(photo.fileId))continue;
 
-            try {
-              const r = await imagekit(
+            try{
+              const r=await imagekit(
                 env,
-                '/files/' + encodeURIComponent(photo.fileId),
-                { method: 'DELETE' }
+                '/files/'+encodeURIComponent(photo.fileId),
+                {method:'DELETE'}
               );
 
-              if (r.ok || r.status === 404) {
+              if(r.ok||r.status===404){
                 deleted.push(photo);
               }
-            } catch {}
+            }catch{}
           }
 
-          const result = await stateCall(
+          const result=await stateCall(
             env,
             '/gallery/remove',
-            {
-              fileIds: deleted.map(x => x.fileId)
-            },
+            {fileIds:deleted.map(x=>x.fileId)},
             event
           );
 
-          if (!result.ok) {
+          if(!result.ok){
             throw new Error(
               'Foto terhapus di ImageKit tetapi pembaruan galeri gagal. Hubungi admin.'
             );
           }
 
-          return json({
-            ok: true,
-            deleted: deleted.length
-          });
+          return json({ok:true,deleted:deleted.length});
         }
       }
 
-      // FILE WEBSITE / STATIC ASSETS
-      if (!env.ASSETS || typeof env.ASSETS.fetch !== 'function') {
+      if(!env.ASSETS||typeof env.ASSETS.fetch!=='function'){
         return new Response(
-          '<!doctype html><html lang="id">' +
-          '<meta charset="utf-8">' +
-          '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-          '<title>Snap &amp; Smile — konfigurasi belum lengkap</title>' +
-          '<body style="font:16px system-ui;padding:28px;line-height:1.5;color:#402b28">' +
-          '<h2>Snap &amp; Smile belum tersambung ke file website.</h2>' +
-          '<p>Binding Static Assets dengan nama <b>ASSETS</b> belum tersedia pada Worker ini. Hubungkan kembali folder aset yang berisi <b>index.html</b> dan <b>admin.html</b>, lalu Deploy ulang.</p>' +
+          '<!doctype html><html lang="id"><meta charset="utf-8">'+
+          '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+          '<title>Snap &amp; Smile — konfigurasi belum lengkap</title>'+
+          '<body style="font:16px system-ui;padding:28px;line-height:1.5;color:#402b28">'+
+          '<h2>Snap &amp; Smile belum tersambung ke file website.</h2>'+
+          '<p>Binding Static Assets dengan nama <b>ASSETS</b> belum tersedia pada Worker ini. '+
+          'Hubungkan kembali folder aset yang berisi <b>index.html</b> dan <b>admin.html</b>, lalu Deploy ulang.</p>'+
           '</body></html>',
           {
-            status: 503,
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'no-store'
+            status:503,
+            headers:{
+              'Content-Type':'text/html; charset=utf-8',
+              'Cache-Control':'no-store'
             }
           }
         );
       }
 
-      if (p === '/' || p === '') {
+      if(p==='/'||p===''){
         return env.ASSETS.fetch(
-          new Request(
-            new URL('/index.html' + u.search, u.origin),
-            request
-          )
+          new Request(new URL('/index.html'+u.search,u.origin),request)
         );
       }
 
-      if (p === '/admin' || p === '/admin/') {
+      if(p==='/admin'||p==='/admin/'){
         return env.ASSETS.fetch(
-          new Request(
-            new URL('/admin.html' + u.search, u.origin),
-            request
-          )
+          new Request(new URL('/admin.html'+u.search,u.origin),request)
         );
       }
 
       return env.ASSETS.fetch(request);
 
-    } catch (e) {
+    }catch(e){
       return json({
-        error: e?.message || 'Terjadi kesalahan server.'
-      }, 500);
+        error:e?.message||'Terjadi kesalahan server.'
+      },500);
     }
   }
 };
 
 
-// DURABLE OBJECT
-// Mengatur kuota unggahan dan galeri secara aman.
-
-export class SnapSmileState {
-  constructor(state, env) {
-    this.state = state;
-    this.env = env;
+// Durable Object: atomic quota reservations and serialized gallery updates.
+export class SnapSmileState{
+  constructor(state,env){
+    this.state=state;
+    this.env=env;
   }
 
-  async fetch(request) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+  async fetch(request){
+    const url=new URL(request.url);
+    const path=url.pathname;
 
-    try {
-
-      // HITUNG JUMLAH UNGGAHAN
-      if (path === '/count') {
-        const id =
-          url.searchParams.get('deviceId') ||
+    try{
+      if(path==='/count'){
+        const id=url.searchParams.get('deviceId')||
           url.searchParams.get('guestId');
 
         return Response.json({
-          count: Number(
-            await this.state.storage.get('count:' + id) || 0
+          count:Number(
+            await this.state.storage.get('count:'+id)||0
           )
         });
       }
 
-      const b = request.method === 'POST'
-        ? await request.json()
-        : {};
+      const b=request.method==='POST'
+        ?await request.json()
+        :{};
 
-      // RESERVASI KUOTA
-      if (path === '/reserve') {
-        const id = String(b.deviceId || b.guestId || '');
+      if(path==='/reserve'){
+        const id=String(b.deviceId||b.guestId||'');
 
-        if (!id) {
+        if(!id){
           return Response.json(
-            { error: 'Identitas tamu tidak valid.' },
-            { status: 400 }
+            {error:'Identitas tamu tidak valid.'},
+            {status:400}
           );
         }
 
-        const result = await this.state.storage.transaction(
-          async tx => {
-            let n = await tx.get('count:' + id);
+        const result=await this.state.storage.transaction(async tx=>{
+          let n=await tx.get('count:'+id);
 
-            if (n === undefined) {
-              n = Math.max(0, Number(b.legacyCount) || 0);
-            }
-
-            if (n >= 3) {
-              return {
-                ok: false,
-                count: n
-              };
-            }
-
-            n++;
-
-            await tx.put('count:' + id, n);
-
-            return {
-              ok: true,
-              count: n
-            };
+          if(n===undefined){
+            n=Math.max(0,Number(b.legacyCount)||0);
           }
-        );
+
+          if(n>=3){
+            return {ok:false,count:n};
+          }
+
+          n++;
+
+          await tx.put('count:'+id,n);
+
+          return {ok:true,count:n};
+        });
 
         return Response.json(
           result.ok
-            ? {
-                ok: true,
-                remaining: 3 - result.count
-              }
-            : {
-                error: 'Batas unggahan tercapai: maksimal 3 photo strip per pengunjung.'
-              },
-          {
-            status: result.ok ? 200 : 429
-          }
+            ?{ok:true,remaining:3-result.count}
+            :{
+              error:'Batas unggahan tercapai: maksimal 3 photo strip per pengunjung.'
+            },
+          {status:result.ok?200:429}
         );
       }
 
-      // LEPAS KUOTA JIKA UPLOAD GAGAL
-      if (path === '/release') {
-        const id = String(b.deviceId || b.guestId || '');
+      if(path==='/release'){
+        const id=String(b.deviceId||b.guestId||'');
 
-        await this.state.storage.transaction(async tx => {
-          const n = Number(
-            await tx.get('count:' + id) || 0
+        await this.state.storage.transaction(async tx=>{
+          const n=Number(
+            await tx.get('count:'+id)||0
           );
 
-          await tx.put(
-            'count:' + id,
-            Math.max(0, n - 1)
-          );
+          await tx.put('count:'+id,Math.max(0,n-1));
         });
 
-        return Response.json({ ok: true });
+        return Response.json({ok:true});
       }
 
-      // INISIALISASI GALERI
-      if (path === '/gallery/init') {
-        let list = await this.state.storage.get('gallery');
+      if(path==='/gallery/init'){
+        let list=await this.state.storage.get('gallery');
 
-        if (!list) {
-          list = Array.isArray(b.legacy)
-            ? b.legacy
-            : [];
-
-          await this.state.storage.put('gallery', list);
+        if(!list){
+          list=Array.isArray(b.legacy)?b.legacy:[];
+          await this.state.storage.put('gallery',list);
         }
 
-        return Response.json({
-          photos: list
-        });
+        return Response.json({photos:list});
       }
 
-      // TAMBAH FOTO KE GALERI
-      if (path === '/gallery/add') {
-        const photo = b.photo;
+      if(path==='/gallery/add'){
+        const photo=b.photo;
 
-        if (!photo?.fileId) {
+        if(!photo?.fileId){
           return Response.json(
-            { error: 'Data foto tidak valid.' },
-            { status: 400 }
+            {error:'Data foto tidak valid.'},
+            {status:400}
           );
         }
 
-        await this.state.storage.transaction(async tx => {
-          const list = await tx.get('gallery') || [];
+        await this.state.storage.transaction(async tx=>{
+          const list=await tx.get('gallery')||[];
 
           list.unshift(photo);
 
-          await tx.put(
-            'gallery',
-            list.slice(0, 500)
-          );
+          await tx.put('gallery',list.slice(0,500));
         });
 
-        return Response.json({ ok: true });
+        return Response.json({ok:true});
       }
 
-      // HAPUS FOTO DARI GALERI
-      if (path === '/gallery/remove') {
-        const ids = new Set(
-          Array.isArray(b.fileIds) ? b.fileIds : []
+      if(path==='/gallery/remove'){
+        const ids=new Set(
+          Array.isArray(b.fileIds)?b.fileIds:[]
         );
 
-        let removed = [];
+        let removed=[];
 
-        await this.state.storage.transaction(async tx => {
-          const list = await tx.get('gallery') || [];
+        await this.state.storage.transaction(async tx=>{
+          const list=await tx.get('gallery')||[];
 
-          removed = list.filter(
-            x => ids.has(x.fileId)
-          );
+          removed=list.filter(x=>ids.has(x.fileId));
 
           await tx.put(
             'gallery',
-            list.filter(x => !ids.has(x.fileId))
+            list.filter(x=>!ids.has(x.fileId))
           );
 
-          for (const p of removed) {
-            const owner = p.deviceId || p.guestId;
+          for(const p of removed){
+            const owner=p.deviceId||p.guestId;
 
-            if (owner) {
-              const k = 'count:' + owner;
-              const n = Number(await tx.get(k) || 0);
+            if(owner){
+              const k='count:'+owner;
+              const n=Number(await tx.get(k)||0);
 
-              await tx.put(
-                k,
-                Math.max(0, n - 1)
-              );
+              await tx.put(k,Math.max(0,n-1));
             }
           }
         });
 
         return Response.json({
-          ok: true,
-          deleted: removed.length
+          ok:true,
+          deleted:removed.length
         });
       }
 
-      return new Response('Not found', {
-        status: 404
-      });
+      return new Response('Not found',{status:404});
 
-    } catch (e) {
-      return Response.json({
-        error: e.message || 'State error'
-      }, {
-        status: 500
-      });
+    }catch(e){
+      return Response.json(
+        {error:e.message||'State error'},
+        {status:500}
+      );
     }
   }
 }
