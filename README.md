@@ -1,27 +1,42 @@
-SNAP & SMILE — PERBAIKAN ADMIN, SHUTTER, DAN THUMBNAIL FRAME
+SNAP & SMILE — PAKET PERBAIKAN LOGIN ADMIN
 
-Isi paket:
+ISI PAKET (file berada langsung di root folder):
 - index.html
 - admin.html
 - worker.js
-- frames/ (8 file JPG frame wedding asli yang sudah tersedia di proyek)
+- frames/ (8 file JPG)
 
-Perbaikan:
-1. Tombol Masuk admin memakai event handler eksplisit, menampilkan respons/error login pada area login, dan mendukung tombol Enter.
-2. Tombol shutter hanya memiliki satu lingkaran (elemen lingkaran bertumpuk dihapus).
-3. Carousel frame memakai delapan file JPG asli, bukan ilustrasi/thumbnail dekoratif rekaan.
-4. Default frame Wedding Minang dan default jumlah foto 1 tetap dipertahankan.
+PERBAIKAN UTAMA:
+- Memperbaiki penyebab JavaScript admin berhenti sebelum event tombol Masuk dipasang.
+- Menambahkan elemen coverPosX, coverPosY, dan coverCenter yang sebelumnya dirujuk oleh JavaScript tetapi tidak ada di HTML.
+- Menambahkan pengaman agar elemen kontrol crop yang opsional tidak menghentikan seluruh script.
+- Login tetap menampilkan pesan bila server menolak password, konfigurasi secret belum ada, atau koneksi gagal.
 
-PENTING SAAT DEPLOY:
-- Upload/deploy SEMUA isi paket sebagai satu folder Static Assets. Jangan hanya mengganti index.html.
-- Pertahankan binding Worker yang sudah ada: ASSETS, SNAP_SMILE_SETTINGS, SNAP_STATE, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_PUBLIC_KEY, IMAGEKIT_URL_ENDPOINT, ADMIN_PASSWORD, ADMIN_SECRET.
-- ADMIN_PASSWORD dan ADMIN_SECRET harus tetap disetel di Worker Secrets/Variables. Jika tidak ada, endpoint login mengembalikan pesan konfigurasi yang jelas.
-- Jangan menghapus data KV/Durable Object atau mengganti nama binding.
-- Simpan salinan file lama sebelum deploy.
+CARA MENYUSUN REPOSITORY GITHUB:
+- Letakkan index.html, admin.html, worker.js, dan folder frames langsung pada root repository (bukan di dalam folder ZIP bernama snap-smile-combined).
+- Pastikan folder frames berisi tepat 8 JPG dari paket.
+- Jangan mengganti nama file atau folder.
 
-Pemeriksaan lokal:
-- Sintaks JavaScript index.html, admin.html, dan worker.js diperiksa dengan Node.js.
-- Semua delapan path /frames/*.jpg tersedia di paket.
-- ZIP diuji dapat dibuka.
+PENTING UNTUK CLOUDFLARE:
+- Paket ini tidak mengubah nama binding atau menghapus data.
+- Pertahankan binding/variables/secrets Worker yang sudah dipakai proyek: ASSETS, SNAP_SMILE_SETTINGS, SNAP_STATE, IMAGEKIT_PRIVATE_KEY, IMAGEKIT_PUBLIC_KEY, IMAGEKIT_URL_ENDPOINT, ADMIN_PASSWORD, ADMIN_SECRET.
+- Pastikan Worker tetap memiliki static assets binding bernama ASSETS yang mengarah ke file statis repository.
+- Jangan menghapus KV namespace, Durable Object, atau secrets yang sudah ada.
+- Jika Cloudflare Build menunjukkan Skipped/Queued, buka detail Build untuk melihat pesan penyebab. Status Skipped bukan tanda bahwa kode admin berhasil diuji.
 
-Catatan: login tetap memerlukan ADMIN_PASSWORD dan ADMIN_SECRET yang benar di konfigurasi Cloudflare Worker. Tes login langsung pada akun Cloudflare dan tes kamera fisik tetap perlu dilakukan setelah deploy.
+PEMERIKSAAN LOKAL:
+- Script inline index/admin lolos pemeriksaan sintaks JavaScript.
+- worker.js lolos node --check sebagai module.
+- Semua referensi elemen DOM yang dipakai admin memiliki elemen HTML yang cocok.
+- Seluruh 8 file frame tersedia.
+
+BATASAN:
+- Login harus diuji pada domain Worker sesungguhnya karena memerlukan ADMIN_PASSWORD, ADMIN_SECRET, cookie HTTPS, dan binding server.
+- Jangan anggap deploy berhasil sampai Build/Deployment berstatus Ready dan login admin berhasil diuji di browser.
+
+
+Pembaruan timer kamera:
+- Tampilan kamera lama dipertahankan.
+- Timer 3 detik, 5 detik, dan Off tersedia tepat di bawah tombol kamera.
+- Pilihan timer terhubung ke countdown yang sudah ada; proses foto dan fitur lain tetap menggunakan alur semula.
+- File admin.html, worker.js, dan seluruh aset frames tidak diubah.
