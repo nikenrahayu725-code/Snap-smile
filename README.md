@@ -1,14 +1,13 @@
-SNAP & SMILE — PAKET PEMBARUAN
+SNAP & SMILE — PAKET GABUNGAN BURGUNDY + KAMERA + THUMBNAIL
 
-Isi paket:
-- index.html : tampilan kamera sentuh, pilihan jumlah foto/frame/filter, auto-start kamera setelah pengunjung masuk, kontrol kamera dan indikator upload bergaya printer.
-- admin.html : file admin dasar dipertahankan tanpa perubahan.
-- worker.js : worker dasar versi upload lebih cepat dipertahankan tanpa perubahan.
+Isi:
+- index.html: tema burgundy luxury, aksen floral/sulur, kamera auto-start setelah sesi tamu masuk, play video setelah izin, pesan error kamera lebih jelas, thumbnail visual untuk pilihan frame.
+- admin.html: dipertahankan dari paket burgundy sebelumnya.
+- worker.js: dipertahankan dari versi upload-faster sebelumnya.
 
-Catatan kompatibilitas:
-- Kamera memerlukan HTTPS dan izin browser. Browser tetap menampilkan prompt izin pertama kali.
-- Pilihan zoom/lensa dan flash mengikuti dukungan perangkat/browser. Tombol tidak dapat memaksa lensa ultra-wide bila browser tidak mengeksposnya.
-- Animasi printer memakai progres unggah XMLHttpRequest; status sukses hanya ditampilkan setelah server memberi respons sukses.
-- Seluruh pengaturan admin dan worker lama dipertahankan.
-
-Sebelum deploy ke hosting, simpan salinan file aktif dan deploy ketiga file sesuai struktur hosting yang digunakan.
+Catatan penting:
+1. Kamera tetap memerlukan izin browser dan halaman HTTPS. Pada perangkat yang menolak izin, pengguna perlu mengizinkannya dari browser.
+2. Thumbnail frame merupakan preview ilustratif berwarna/berornamen yang mewakili pilihan frame, bukan render foto asli dari file frame.
+3. Zoom 0.5x/1x/2x bergantung kemampuan kamera/browser. Tidak semua perangkat menyediakan kontrol lensa/zoom.
+4. Perubahan ini belum diuji di hosting produksi dan beragam HP. Uji dulu pada staging/HP sebelum acara.
+5. Simpan backup versi lama sebelum mengganti file.
