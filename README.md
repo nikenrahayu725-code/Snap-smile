@@ -1,24 +1,25 @@
-# Snap & Smile — paket uji pembaruan
+# Snap & Smile — paket pembaruan pengaturan Admin
 
-## Isi
-index.html, admin.html, worker.js, wrangler.toml, folder frames (8 JPG).
-
-## Pembaruan
-- Pengambilan foto manual satu per satu (1–4 foto per strip).
-- Ganti kamera di antara jepretan; foto yang sudah diambil tetap tersimpan.
-- Flash/torch dimatikan dan stream dihentikan ketika keluar dari halaman atau browser disembunyikan.
-- Printer memperlihatkan photo strip asli yang diunggah.
-- Teks tombol masuk putih; teks nama tamu hitam.
-- Maksimal 4 unggahan photo strip per perangkat per event (sebelumnya 3).
-- Galeri tidak lagi memotong daftar pada 500 hasil.
-- Tombol ekspor QR event bergambar PNG di Admin, memuat nama event. Memerlukan akses server QR eksternal; jika diblokir, gunakan tautan QR biasa.
+## Fitur pengaturan baru
+- Admin dapat mengatur maksimal jepretan dalam satu photo strip (1–12).
+- Admin dapat mengatur maksimal unggahan photo strip per perangkat per event (1–50).
+- Kedua batas disimpan per event melalui konfigurasi KV dan diberlakukan di Worker/Durable Object, bukan hanya teks tampilan.
+- Pilihan jumlah foto pada kamera mengikuti batas jepretan yang dipilih Admin.
+- Kuota sisa, keterangan tamu, dan validasi upload mengikuti batas unggahan event.
+- Pengambilan foto tetap manual satu per satu; kamera dapat diganti antarjepretan.
+- Saat tab/halaman disembunyikan atau tamu keluar/ganti nama, flash dimatikan tanpa memanggil stop pada media stream. Tombol Stop Kamera tetap menghentikan kamera secara sengaja.
+- Animasi printer memakai foto asli dalam kertas berbentuk strip, tanpa sisi putih lebar di kiri dan kanan.
 
 ## Deploy
-1. Simpan backup project dan data sebelum mengganti file.
-2. Ganti file di root project sesuai isi ZIP, termasuk folder frames.
-3. Pastikan binding KV, Durable Object, dan Secrets yang sudah ada tidak dihapus atau diganti. Periksa wrangler.toml terhadap konfigurasi deployment aktif sebelum overwrite.
-4. Deploy melalui alur Cloudflare/GitHub yang biasa digunakan.
-5. Uji di HP: masuk sebagai tamu, jepret 4 kali manual, pindah kamera, aktifkan flash lalu keluar, upload, cek printer/galeri, ekspor QR dari Admin.
+1. Backup repository dan data.
+2. Ganti file project dengan isi paket ini, termasuk folder `frames`, `wrangler.toml`, dan `.assetsignore`.
+3. Pastikan `wrangler.toml` tetap menyertakan binding KV `SNAP_SMILE_SETTINGS` dan Durable Object `SNAP_STATE` / class `SnapSmileState`. Jangan menghapus namespace/Secrets yang sudah ada.
+4. Commit dan deploy melalui Cloudflare Workers Builds.
+5. Buka Admin, pilih event, atur kedua batas, lalu tekan Simpan Pengaturan.
+6. Uji: set maksimal jepretan 6 dan unggahan 2, masuk ke halaman event, pastikan kamera menampilkan 1–6 foto dan kuota tamu menunjukkan 2. Setelah pengujian, kembalikan batas sesuai kebutuhan.
 
-## Catatan penting
-Pemeriksaan kode lokal bukan pengujian kamera fisik, koneksi ImageKit, login admin, atau deployment Cloudflare. Fitur QR PNG bergantung pada layanan QR eksternal dan kebijakan CORS browser. Pembatasan kuota gratis ImageKit tidak bisa dijamin dari kode ini: pantau dashboard layanan dan nonaktifkan penagihan/upgrade berbayar di akun. Galeri besar memerlukan pengujian performa tambahan.
+## Kompatibilitas data kuota lama
+Jumlah unggahan yang sudah tersimpan pada Durable Object tetap dipertahankan. Jika batas baru lebih kecil dari jumlah yang sudah dipakai, sisa kuota menjadi 0; menaikkan batas akan membuka sisa kuota sesuai selisihnya.
+
+## Catatan
+Pemeriksaan statis tidak menggantikan uji nyata pada browser, kamera, Cloudflare, dan ImageKit. Pengaturan batas hanya membatasi aplikasi; tetap pantau kuota penyimpanan/bandwidth ImageKit dan nonaktifkan opsi berbayar otomatis pada akun.
