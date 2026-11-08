@@ -1,0 +1,22 @@
+name = "snap-smile"
+main = "worker.js"
+compatibility_date = "2026-11-02"
+keep_vars = true
+
+[assets]
+directory = "./"
+binding = "ASSETS"
+html_handling = "none"
+run_worker_first = ["/", "/api/*", "/admin*"]
+
+[[kv_namespaces]]
+binding = "SNAP_SMILE_SETTINGS"
+id = "da49c5e961d14fc38ef79ca634b7ec93"
+
+[[durable_objects.bindings]]
+name = "SNAP_STATE"
+class_name = "SnapSmileState"
+
+[exports.SnapSmileState]
+type = "durable-object"
+storage = "sqlite"
