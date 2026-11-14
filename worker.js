@@ -1,68 +1,1022 @@
 const DEFAULT_EVENT='niken-egit';
-const DEFAULTS={photoCounts:[1,2,3,4],countdowns:[3,5,0],filters:['none','warm','soft','vintage','mono'],frames:['floral-cream','floral-pink','floral-maroon','floral-sage','floral-mocha','floral-champagne','minang-maroon','minang-cream'],title:'THE WEDDING OF NIKEN & EGIT',weddingLabel:'THE WEDDING OF',coupleName:'Niken & Egit',headingFont:'cinzel',nameFont:'great-vibes',headingSize:24,nameSize:76,dateFont:'cormorant-garamond',dateSize:20,monogramText:'N & E',monogramFont:'great-vibes',monogramSize:64,ornamentSize:42,decorPositions:{},subtitle:'19.12.2026',messageHeading:'Ucapan untuk Niken & Egit',textPositions:{heading:{x:0,y:0},name:{x:0,y:0},date:{x:0,y:0}},coverPosition:{x:50,y:50},noFrame:{heading:'THE WEDDING OF',headingFont:'cinzel',headingSize:24,nameFont:'great-vibes',nameSize:52,dateFont:'cormorant-garamond',dateSize:20,color:'#76563c',align:'center',offsetX:0,offsetY:0}};
-const ADMIN_COOKIE='snap_admin', VISITOR_COOKIE='snap_visitor', enc=s=>new TextEncoder().encode(s);
-const json=(o,status=200,headers={})=>new Response(JSON.stringify(o),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}});
-function b64url(bytes){return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
-async function sign(p,secret){const k=await crypto.subtle.importKey('raw',enc(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return b64url(await crypto.subtle.sign('HMAC',k,enc(p)))}
-function cookie(req,name){const m=(req.headers.get('Cookie')||'').match(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)'));return m?.[1]||null}
-async function isAdmin(req,env){const token=cookie(req,ADMIN_COOKIE);if(!token||!env.ADMIN_SECRET)return false;const [p,s]=token.split('.');if(!p||!s)return false;try{const raw=atob(p.replace(/-/g,'+').replace(/_/g,'/'));if(JSON.parse(raw).exp<Date.now())return false;return await sign(p,env.ADMIN_SECRET)===s}catch{return false}}
-function eventId(u){const id=(u.searchParams.get('event')||DEFAULT_EVENT).toLowerCase();return /^[a-z0-9][a-z0-9-]{1,39}$/.test(id)?id:DEFAULT_EVENT}
-const ek=(id,s)=>`event:${id}:${s}`;
-async function getEvents(env){let a=[];try{a=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('events:list')||'[]')}catch{}const base={id:DEFAULT_EVENT,name:'The Wedding of Niken & Egit',date:'19.12.2026',createdAt:'2026-11-03T00:00:00.000Z',active:true};return [base,...a.filter(x=>x.id!==DEFAULT_EVENT)]}
-async function config(env,event=DEFAULT_EVENT){let c={};try{c=JSON.parse(await env.SNAP_SMILE_SETTINGS.get(ek(event,'config'))||'{}')}catch{}let legacy={};if(event===DEFAULT_EVENT){try{legacy=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('public-config')||'{}')}catch{}}if(event===DEFAULT_EVENT&&!Object.keys(c).length)c=legacy;let cover=await env.SNAP_SMILE_SETTINGS.get(ek(event,'cover'),'json').catch(()=>null);if(!cover&&event===DEFAULT_EVENT){cover=await env.SNAP_SMILE_SETTINGS.get('cover:current','json').catch(()=>null)||await env.SNAP_SMILE_SETTINGS.get('cover','json').catch(()=>null)||legacy.cover||c.cover||null;}const merged={...DEFAULTS,...c,...(cover?{cover}: {})};const approved=new Set(DEFAULTS.frames);const selected=Array.isArray(c.frames)?c.frames.filter(x=>approved.has(x)):[];merged.frames=selected.length?selected:DEFAULTS.frames;return merged}
-async function photos(env){try{const v=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('gallery:photos')||'[]');return Array.isArray(v)?v:[]}catch{return []}}
-async function imagekit(env,path,opts={}){if(!env.IMAGEKIT_PRIVATE_KEY)throw new Error('ImageKit belum dikonfigurasi.');return fetch('https://api.imagekit.io/v1'+path,{...opts,headers:{Authorization:'Basic '+btoa(env.IMAGEKIT_PRIVATE_KEY+':'),...(opts.headers||{})}})}
-async function uploadImage(env,file,name,folder){if(!file||typeof file==='string'||!file.type?.startsWith('image/'))throw new Error('File foto tidak valid.');if(file.size>8*1024*1024)throw new Error('Ukuran foto maksimal 8 MB.');const fd=new FormData();fd.append('file',file);fd.append('fileName',name);fd.append('folder',folder);const r=await imagekit(env,'/files/upload',{method:'POST',body:fd});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.message||'Upload ke penyimpanan gagal.');return d}
-function visitorCookie(id,event){return `snap_visitor_${event}=${id}; Path=/; Max-Age=15552000; Secure; SameSite=Lax`}
-async function getGuest(env,id){if(!id)return null;try{return await env.SNAP_SMILE_SETTINGS.get('guest:'+id,'json')}catch{return null}}
-async function stateCall(env,path,body,event=DEFAULT_EVENT){if(!env.SNAP_STATE)throw new Error('Binding SNAP_STATE belum dikonfigurasi.');const id=env.SNAP_STATE.idFromName(event===DEFAULT_EVENT?'snap-smile-global':'snap-smile-'+event);return env.SNAP_STATE.get(id).fetch('https://state'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})}
-async function getCount(env,id,event=DEFAULT_EVENT){const r=await stateCall(env,'/count?deviceId='+encodeURIComponent(id),null,event);if(!r.ok)throw new Error('Gagal membaca kuota.');return (await r.json()).count}
-async function getGallery(env,event=DEFAULT_EVENT){const legacy=event===DEFAULT_EVENT?await photos(env):[];const r=await stateCall(env,'/gallery/init',{legacy},event);if(!r.ok)throw new Error('Gagal membaca galeri.');return (await r.json()).photos}
-export default{async fetch(request,env){const u=new URL(request.url),p=u.pathname,m=request.method,event=eventId(u),visitorCookieName='snap_visitor_'+event;
-try{
-if(p==='/api/diag')return json({ok:true,bindings:{kv:!!env.SNAP_SMILE_SETTINGS,assets:!!env.ASSETS,state:!!env.SNAP_STATE,imagekitPrivateKey:!!env.IMAGEKIT_PRIVATE_KEY,imagekitPublicKey:!!env.IMAGEKIT_PUBLIC_KEY,imagekitUrlEndpoint:!!env.IMAGEKIT_URL_ENDPOINT,adminPassword:!!env.ADMIN_PASSWORD,adminSecret:!!env.ADMIN_SECRET}});
-if(p==='/api/config'&&m==='GET')return json({...await config(env,event),eventId:event});
-if(p==='/api/guest/me'&&m==='GET'){const id=cookie(request,visitorCookieName)||(event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null),g=await getGuest(env,id);if(!g||((g.eventId||DEFAULT_EVENT)!==event))return json({guest:null});return json({guest:{...g,remaining:Math.max(0,3-await getCount(env,g.deviceId||id,event))}})}
-if(p==='/api/guest/start'&&m==='POST'){let b={};try{b=await request.json()}catch{}const name=String(b.name||'').trim().replace(/[<>]/g,'').slice(0,60),deviceId=String(b.deviceId||'').slice(0,100);if(name.length<2)return json({error:'Nama minimal 2 karakter.'},400);if(!/^[A-Za-z0-9_-]{16,100}$/.test(deviceId))return json({error:'Identitas perangkat tidak valid. Muat ulang halaman.'},400);const id=crypto.randomUUID(),g={id,name,deviceId,eventId:event,createdAt:new Date().toISOString()};await env.SNAP_SMILE_SETTINGS.put('guest:'+id,JSON.stringify(g),{expirationTtl:60*60*24*180});return json({ok:true,guest:{...g,remaining:Math.max(0,3-await getCount(env,deviceId,event))}},200,{'Set-Cookie':visitorCookie(id,event)})}
-if(p==='/api/gallery'&&m==='GET'){const list=await getGallery(env,event);return json({photos:list.map(({fileId,url,thumbnailUrl,createdAt,guestName,message})=>({fileId,url,thumbnailUrl,createdAt,guestName,message}))})}
-if(p==='/api/upload'&&m==='POST'){if(!env.SNAP_SMILE_SETTINGS||!env.IMAGEKIT_PRIVATE_KEY)return json({error:'Layanan galeri belum tersambung.'},503);const id=cookie(request,visitorCookieName)||(event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null),guest=await getGuest(env,id);if(!id||!guest||(guest.eventId||DEFAULT_EVENT)!==event)return json({error:'Masukkan nama tamu untuk acara ini terlebih dahulu.'},401);const form=await request.formData(),file=form.get('file'),message=String(form.get('message')||'').trim().slice(0,500);const deviceId=guest.deviceId||id;const reserve=await stateCall(env,'/reserve',{deviceId},event);const reserved=await reserve.json();if(!reserve.ok)return json({error:reserved.error||'Kuota unggahan habis.'},reserve.status);let d;try{d=await uploadImage(env,file,'snap-smile-'+event+'-'+Date.now()+'.png','/snap-smile/'+event)}catch(e){await stateCall(env,'/release',{deviceId},event);throw e}const photo={fileId:d.fileId,url:d.url,thumbnailUrl:d.thumbnailUrl||d.url,createdAt:new Date().toISOString(),guestId:id,deviceId,eventId:event,guestName:guest.name,message};const add=await stateCall(env,'/gallery/add',{photo},event);if(!add.ok){try{await imagekit(env,'/files/'+encodeURIComponent(d.fileId),{method:'DELETE'})}catch{}await stateCall(env,'/release',{deviceId},event);throw new Error('Gagal menyimpan data galeri. Silakan coba lagi.')}return json({ok:true,photo,remaining:reserved.remaining})}
-if(p==='/api/admin/login'&&m==='POST'){if(!env.ADMIN_PASSWORD||!env.ADMIN_SECRET)return json({error:'ADMIN_PASSWORD dan ADMIN_SECRET belum tersedia.'},503);let b={};try{b=await request.json()}catch{}if(b.password!==env.ADMIN_PASSWORD)return json({error:'Password salah.'},401);const token=b64url(enc(JSON.stringify({exp:Date.now()+28800000}))),sig=await sign(token,env.ADMIN_SECRET);return json({ok:true},200,{'Set-Cookie':`${ADMIN_COOKIE}=${token}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`})}
-if(p==='/api/admin/logout'&&m==='POST')return json({ok:true},200,{'Set-Cookie':`${ADMIN_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`});
-if(p.startsWith('/api/admin/')){if(!await isAdmin(request,env))return json({error:'Silakan login sebagai admin.'},401);
-if(p==='/api/admin/events'&&m==='GET')return json({events:await getEvents(env)});
-if(p==='/api/admin/events'&&m==='POST'){let b={};try{b=await request.json()}catch{}const name=String(b.name||'').trim().slice(0,80),date=String(b.date||'').trim().slice(0,40);let id=String(b.id||name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')).toLowerCase().slice(0,40);if(!name||!/^[a-z0-9][a-z0-9-]{1,39}$/.test(id))return json({error:'Nama atau ID acara tidak valid.'},400);const a=await getEvents(env);if(a.some(x=>x.id===id))return json({error:'ID acara sudah digunakan.'},409);const e={id,name,date,createdAt:new Date().toISOString(),active:true};a.push(e);await env.SNAP_SMILE_SETTINGS.put('events:list',JSON.stringify(a));await env.SNAP_SMILE_SETTINGS.put(ek(id,'config'),JSON.stringify({...DEFAULTS,title:'THE WEDDING OF '+name.toUpperCase(),weddingLabel:'THE WEDDING OF',coupleName:name,subtitle:date||DEFAULTS.subtitle,messageHeading:'Ucapan untuk '+name}));return json({ok:true,event:e})}
-if(p==='/api/admin/events'&&m==='DELETE'){let b={};try{b=await request.json()}catch{}if(!b.id||b.id===DEFAULT_EVENT)return json({error:'Acara utama tidak dapat dihapus.'},400);const a=await getEvents(env);if(!a.some(x=>x.id===b.id))return json({error:'Acara tidak ditemukan.'},404);await env.SNAP_SMILE_SETTINGS.put('events:list',JSON.stringify(a.filter(x=>x.id!==b.id)));return json({ok:true,note:'Acara diarsipkan; file foto tidak dihapus otomatis.'})}
-if(p==='/api/admin/config'&&m==='GET')return json(await config(env,event));
-if(p==='/api/admin/config'&&m==='PUT'){let c;try{c=await request.json()}catch{return json({error:'Data tidak valid.'},400)}const allowed={photoCounts:[1,2,3,4],countdowns:[0,3,5],filters:['none','warm','soft','vintage','mono'],frames:['floral-cream','floral-pink','floral-maroon','floral-sage','floral-mocha','floral-champagne','minang-maroon','minang-cream']};for(const k of Object.keys(allowed)){if(!Array.isArray(c[k])||!c[k].length||c[k].some(v=>!allowed[k].includes((k==='photoCounts'||k==='countdowns')?Number(v):v)))return json({error:'Pilihan '+k+' tidak valid.'},400)}const coupleName=String(c.coupleName||String(c.title||DEFAULTS.title).replace(/^the wedding of\s*/i,'').trim()).slice(0,60);const saved={photoCounts:c.photoCounts.map(Number),countdowns:c.countdowns.map(Number),filters:c.filters,frames:c.frames,title:String(c.title||('THE WEDDING OF '+coupleName)).slice(0,100),weddingLabel:String(c.weddingLabel||'THE WEDDING OF').slice(0,50),coupleName,headingFont:['cinzel','playfair-display','cormorant-garamond','georgia','great-vibes'].includes(c.headingFont)?c.headingFont:'cinzel',nameFont:['great-vibes','alex-brush','allura','parisienne','pinyon-script','playfair-display','cormorant-garamond','cinzel'].includes(c.nameFont)?c.nameFont:'great-vibes',headingSize:Math.max(12,Math.min(54,Number(c.headingSize)||24)),nameSize:Math.max(24,Math.min(180,Number(c.nameSize)||76)),dateFont:['great-vibes','allura','parisienne','cinzel','playfair-display','georgia','cormorant-garamond'].includes(c.dateFont)?c.dateFont:'cormorant-garamond',dateSize:Math.max(10,Math.min(48,Number(c.dateSize)||20)),subtitle:String(c.subtitle||DEFAULTS.subtitle).slice(0,40),messageHeading:String(c.messageHeading||('Ucapan untuk '+coupleName)).slice(0,100),monogramText:String(c.monogramText||'N & E').slice(0,8),monogramFont:['great-vibes','allura','parisienne','playfair-display','cormorant-garamond','cinzel'].includes(c.monogramFont)?c.monogramFont:'great-vibes',monogramSize:Math.max(16,Math.min(150,Number(c.monogramSize)||64)),ornamentSize:Math.max(12,Math.min(100,Number(c.ornamentSize)||42)),decorPositions:Object.fromEntries(DEFAULTS.frames.map(frame=>{const source=c.decorPositions?.[frame]||{};return [frame,Object.fromEntries(['monogram','ornament'].map(k=>{const v=source[k]||{};return [k,{x:Math.max(-400,Math.min(400,Number(v.x)||0)),y:Math.max(-400,Math.min(400,Number(v.y)||0))}]}))]})),textPositions:Object.fromEntries(DEFAULTS.frames.map(frame=>{const source=c.textPositions?.[frame]||c.textPositions||{};return [frame,Object.fromEntries(['heading','name','date'].map(k=>{const v=source[k]||{};return [k,{x:Math.max(-400,Math.min(400,Number(v.x)||0)),y:Math.max(-400,Math.min(400,Number(v.y)||0))}]}))]})),coverPosition:{x:Math.max(0,Math.min(100,Number(c.coverPosition?.x??50))),y:Math.max(0,Math.min(100,Number(c.coverPosition?.y??50)))},
-noFrame:(()=>{const n=c.noFrame||{},fonts=['cinzel','playfair-display','cormorant-garamond','georgia','great-vibes','alex-brush','allura','parisienne','pinyon-script'];return {heading:String(n.heading??'THE WEDDING OF').slice(0,50),headingFont:fonts.includes(n.headingFont)?n.headingFont:'cinzel',headingSize:Math.max(12,Math.min(54,Number(n.headingSize)||24)),nameFont:fonts.includes(n.nameFont)?n.nameFont:'great-vibes',nameSize:Math.max(24,Math.min(120,Number(n.nameSize)||52)),dateFont:fonts.includes(n.dateFont)?n.dateFont:'cormorant-garamond',dateSize:Math.max(10,Math.min(48,Number(n.dateSize)||20)),color:/^#[0-9a-f]{6}$/i.test(String(n.color||''))?n.color:'#76563c',align:['left','center','right'].includes(n.align)?n.align:'center',offsetX:Math.max(-250,Math.min(250,Number(n.offsetX)||0)),offsetY:Math.max(-100,Math.min(100,Number(n.offsetY)||0))}})()};const old=await config(env,event);const merged={...old,...saved,noFrame:saved.noFrame};await env.SNAP_SMILE_SETTINGS.put(ek(event,'config'),JSON.stringify(merged));return json({ok:true})}
-if(p==='/api/admin/cover'&&m==='POST'){const form=await request.formData(),file=form.get('file');const d=await uploadImage(env,file,'wedding-cover-'+Date.now(),'/snap-smile-cover/'+event);const old=await env.SNAP_SMILE_SETTINGS.get(ek(event,'cover'),'json').catch(()=>null);const cover={fileId:d.fileId,url:d.url,thumbnailUrl:d.thumbnailUrl||d.url,updatedAt:new Date().toISOString()};await env.SNAP_SMILE_SETTINGS.put(ek(event,'cover'),JSON.stringify(cover));if(old?.fileId){try{await imagekit(env,'/files/'+encodeURIComponent(old.fileId),{method:'DELETE'})}catch{}}return json({ok:true,cover})}
-if(p==='/api/admin/cover'&&m==='DELETE'){const old=await env.SNAP_SMILE_SETTINGS.get(ek(event,'cover'),'json').catch(()=>null);await env.SNAP_SMILE_SETTINGS.delete(ek(event,'cover'));if(old?.fileId){try{await imagekit(env,'/files/'+encodeURIComponent(old.fileId),{method:'DELETE'})}catch{}}return json({ok:true})}
-if(p==='/api/admin/gallery'&&m==='GET')return json({photos:await getGallery(env,event)});
-if(p==='/api/admin/gallery'&&m==='DELETE'){let b={};try{b=await request.json()}catch{}const list=await getGallery(env,event),ids=new Set((b.all?list.map(x=>x.fileId):(Array.isArray(b.fileIds)?b.fileIds:[])).filter(x=>typeof x==='string'));const deleted=[];for(const photo of list){if(!ids.has(photo.fileId))continue;try{const r=await imagekit(env,'/files/'+encodeURIComponent(photo.fileId),{method:'DELETE'});if(r.ok||r.status===404)deleted.push(photo)}catch{}}const result=await stateCall(env,'/gallery/remove',{fileIds:deleted.map(x=>x.fileId)},event);if(!result.ok)throw new Error('Foto terhapus di ImageKit tetapi pembaruan galeri gagal. Hubungi admin.');return json({ok:true,deleted:deleted.length})}
+const DEFAULTS={
+  photoCounts:[1,2,3,4],
+  countdowns:[3,5,0],
+  filters:['none','warm','soft','vintage','mono'],
+  frames:['floral-cream','floral-pink','floral-maroon','floral-sage','floral-mocha','floral-champagne','minang-maroon','minang-cream'],
+  title:'THE WEDDING OF NIKEN & EGIT',
+  weddingLabel:'THE WEDDING OF',
+  coupleName:'Niken & Egit',
+  headingFont:'cinzel',
+  nameFont:'great-vibes',
+  headingSize:24,
+  nameSize:76,
+  dateFont:'cormorant-garamond',
+  dateSize:20,
+  monogramText:'N & E',
+  monogramFont:'great-vibes',
+  monogramSize:64,
+  ornamentSize:42,
+  decorPositions:{},
+  subtitle:'19.12.2026',
+  messageHeading:'Ucapan untuk Niken & Egit',
+  textPositions:{
+    heading:{x:0,y:0},
+    name:{x:0,y:0},
+    date:{x:0,y:0}
+  },
+  coverPosition:{x:50,y:50},
+  noFrame:{
+    heading:'THE WEDDING OF',
+    headingFont:'cinzel',
+    headingSize:24,
+    nameFont:'great-vibes',
+    nameSize:52,
+    dateFont:'cormorant-garamond',
+    dateSize:20,
+    headingColor:'#fffaf2',
+    nameColor:'#fffaf2',
+    dateColor:'#fffaf2',
+    color:'#76563c',
+    align:'center',
+    offsetX:0,
+    offsetY:0,
+    textPositions:{
+      heading:{x:0,y:0},
+      name:{x:0,y:0},
+      date:{x:0,y:0}
+    }
+  }
+};
+
+const ADMIN_COOKIE='snap_admin';
+const VISITOR_COOKIE='snap_visitor';
+const enc=s=>new TextEncoder().encode(s);
+
+const json=(o,status=200,headers={})=>
+  new Response(JSON.stringify(o),{
+    status,
+    headers:{
+      'Content-Type':'application/json; charset=utf-8',
+      'Cache-Control':'no-store',
+      ...headers
+    }
+  });
+
+function b64url(bytes){
+  return btoa(String.fromCharCode(...new Uint8Array(bytes)))
+    .replace(/\+/g,'-')
+    .replace(/\//g,'_')
+    .replace(/=+$/,'');
 }
-if(!env.ASSETS||typeof env.ASSETS.fetch!=='function')return new Response('<!doctype html><html lang="id"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Snap &amp; Smile Ã¢ÂÂ konfigurasi belum lengkap</title><body style="font:16px system-ui;padding:28px;line-height:1.5;color:#402b28"><h2>Snap &amp; Smile belum tersambung ke file website.</h2><p>Binding Static Assets dengan nama <b>ASSETS</b> belum tersedia pada Worker ini. Hubungkan kembali folder aset yang berisi <b>index.html</b> dan <b>admin.html</b>, lalu Deploy ulang.</p></body></html>',{status:503,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});if(p==='/'||p==='')return env.ASSETS.fetch(new Request(new URL('/index.html'+u.search,u.origin),request));if(p==='/admin'||p==='/admin/'||p==='/admin.html')return env.ASSETS.fetch(new Request(new URL('/admin.html'+u.search,u.origin),request));return env.ASSETS.fetch(request);
-}catch(e){return json({error:e?.message||'Terjadi kesalahan server.'},500)}
-}};
+
+async function sign(p,secret){
+  const k=await crypto.subtle.importKey(
+    'raw',
+    enc(secret),
+    {name:'HMAC',hash:'SHA-256'},
+    false,
+    ['sign']
+  );
+  return b64url(await crypto.subtle.sign('HMAC',k,enc(p)));
+}
+
+function cookie(req,name){
+  const m=(req.headers.get('Cookie')||'')
+    .match(new RegExp('(?:^|;\\s*)'+name+'=([^;]+)'));
+  return m?.[1]||null;
+}
+
+async function isAdmin(req,env){
+  const token=cookie(req,ADMIN_COOKIE);
+  if(!token||!env.ADMIN_SECRET)return false;
+  const [p,s]=token.split('.');
+  if(!p||!s)return false;
+  try{
+    const raw=atob(p.replace(/-/g,'+').replace(/_/g,'/'));
+    if(JSON.parse(raw).exp<Date.now())return false;
+    return await sign(p,env.ADMIN_SECRET)===s;
+  }catch{
+    return false;
+  }
+}
+
+function eventId(u){
+  const id=(u.searchParams.get('event')||DEFAULT_EVENT).toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{1,39}$/.test(id)?id:DEFAULT_EVENT;
+}
+
+const ek=(id,s)=>`event:${id}:${s}`;
+
+async function getEvents(env){
+  let a=[];
+  try{
+    a=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('events:list')||'[]');
+  }catch{}
+  const base={
+    id:DEFAULT_EVENT,
+    name:'The Wedding of Niken & Egit',
+    date:'19.12.2026',
+    createdAt:'2026-11-03T00:00:00.000Z',
+    active:true
+  };
+  return [base,...a.filter(x=>x.id!==DEFAULT_EVENT)];
+}
+
+async function config(env,event=DEFAULT_EVENT){
+  let c={};
+  try{
+    c=JSON.parse(await env.SNAP_SMILE_SETTINGS.get(ek(event,'config'))||'{}');
+  }catch{}
+
+  let legacy={};
+  if(event===DEFAULT_EVENT){
+    try{
+      legacy=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('public-config')||'{}');
+    }catch{}
+  }
+
+  if(event===DEFAULT_EVENT&&!Object.keys(c).length)c=legacy;
+
+  let cover=await env.SNAP_SMILE_SETTINGS.get(ek(event,'cover'),'json').catch(()=>null);
+
+  if(!cover&&event===DEFAULT_EVENT){
+    cover=await env.SNAP_SMILE_SETTINGS.get('cover:current','json').catch(()=>null)
+      ||await env.SNAP_SMILE_SETTINGS.get('cover','json').catch(()=>null)
+      ||legacy.cover
+      ||c.cover
+      ||null;
+  }
+
+  const merged={...DEFAULTS,...c,...(cover?{cover}: {})};
+  const approved=new Set(DEFAULTS.frames);
+  const selected=Array.isArray(c.frames)?c.frames.filter(x=>approved.has(x)):[];
+  merged.frames=selected.length?selected:DEFAULTS.frames;
+  return merged;
+}
+
+async function photos(env){
+  try{
+    const v=JSON.parse(await env.SNAP_SMILE_SETTINGS.get('gallery:photos')||'[]');
+    return Array.isArray(v)?v:[];
+  }catch{
+    return [];
+  }
+}
+
+async function imagekit(env,path,opts={}){
+  if(!env.IMAGEKIT_PRIVATE_KEY)throw new Error('ImageKit belum dikonfigurasi.');
+  return fetch('https://api.imagekit.io/v1'+path,{
+    ...opts,
+    headers:{
+      Authorization:'Basic '+btoa(env.IMAGEKIT_PRIVATE_KEY+':'),
+      ...(opts.headers||{})
+    }
+  });
+}
+
+async function uploadImage(env,file,name,folder){
+  if(!file||typeof file==='string'||!file.type?.startsWith('image/'))
+    throw new Error('File foto tidak valid.');
+  if(file.size>8*1024*1024)
+    throw new Error('Ukuran foto maksimal 8 MB.');
+
+  const fd=new FormData();
+  fd.append('file',file);
+  fd.append('fileName',name);
+  fd.append('folder',folder);
+
+  const r=await imagekit(env,'/files/upload',{method:'POST',body:fd});
+  let d={};
+  try{d=await r.json();}catch{}
+  if(!r.ok)throw new Error(d.message||'Upload ke penyimpanan gagal.');
+  return d;
+}
+function visitorCookie(id,event){
+  return `snap_visitor_${event}=${id}; Path=/; Max-Age=15552000; Secure; SameSite=Lax`;
+}
+
+async function getGuest(env,id){
+  if(!id)return null;
+  try{
+    return await env.SNAP_SMILE_SETTINGS.get('guest:'+id,'json');
+  }catch{
+    return null;
+  }
+}
+
+async function stateCall(env,path,body,event=DEFAULT_EVENT){
+  if(!env.SNAP_STATE)
+    throw new Error('Binding SNAP_STATE belum dikonfigurasi.');
+
+  const id=env.SNAP_STATE.idFromName(
+    event===DEFAULT_EVENT?'snap-smile-global':'snap-smile-'+event
+  );
+
+  return env.SNAP_STATE.get(id).fetch('https://state'+path,{
+    method:body?'POST':'GET',
+    headers:{'Content-Type':'application/json'},
+    body:body?JSON.stringify(body):undefined
+  });
+}
+
+async function getCount(env,id,event=DEFAULT_EVENT){
+  const r=await stateCall(
+    env,
+    '/count?deviceId='+encodeURIComponent(id),
+    null,
+    event
+  );
+
+  if(!r.ok)throw new Error('Gagal membaca kuota.');
+  return (await r.json()).count;
+}
+
+async function getGallery(env,event=DEFAULT_EVENT){
+  const legacy=event===DEFAULT_EVENT?await photos(env):[];
+  const r=await stateCall(env,'/gallery/init',{legacy},event);
+
+  if(!r.ok)throw new Error('Gagal membaca galeri.');
+  return (await r.json()).photos;
+}
+
+export default{
+  async fetch(request,env){
+    const u=new URL(request.url);
+    const p=u.pathname;
+    const m=request.method;
+    const event=eventId(u);
+    const visitorCookieName='snap_visitor_'+event;
+
+    try{
+
+      if(p==='/api/diag')
+        return json({
+          ok:true,
+          bindings:{
+            kv:!!env.SNAP_SMILE_SETTINGS,
+            assets:!!env.ASSETS,
+            state:!!env.SNAP_STATE,
+            imagekitPrivateKey:!!env.IMAGEKIT_PRIVATE_KEY,
+            imagekitPublicKey:!!env.IMAGEKIT_PUBLIC_KEY,
+            imagekitUrlEndpoint:!!env.IMAGEKIT_URL_ENDPOINT,
+            adminPassword:!!env.ADMIN_PASSWORD,
+            adminSecret:!!env.ADMIN_SECRET
+          }
+        });
+
+      if(p==='/api/config'&&m==='GET')
+        return json({...await config(env,event),eventId:event});
+
+      if(p==='/api/guest/me'&&m==='GET'){
+        const id=cookie(request,visitorCookieName)
+          ||(event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null);
+
+        const g=await getGuest(env,id);
+
+        if(!g||((g.eventId||DEFAULT_EVENT)!==event))
+          return json({guest:null});
+
+        return json({
+          guest:{
+            ...g,
+            remaining:Math.max(
+              0,
+              3-await getCount(env,g.deviceId||id,event)
+            )
+          }
+        });
+      }
+
+      if(p==='/api/guest/start'&&m==='POST'){
+        let b={};
+        try{b=await request.json();}catch{}
+
+        const name=String(b.name||'')
+          .trim().replace(/[<>]/g,'').slice(0,60);
+
+        const deviceId=String(b.deviceId||'').slice(0,100);
+
+        if(name.length<2)
+          return json({error:'Nama minimal 2 karakter.'},400);
+
+        if(!/^[A-Za-z0-9_-]{16,100}$/.test(deviceId))
+          return json({
+            error:'Identitas perangkat tidak valid. Muat ulang halaman.'
+          },400);
+
+        const id=crypto.randomUUID();
+
+        const g={
+          id,
+          name,
+          deviceId,
+          eventId:event,
+          createdAt:new Date().toISOString()
+        };
+
+        await env.SNAP_SMILE_SETTINGS.put(
+          'guest:'+id,
+          JSON.stringify(g),
+          {expirationTtl:60*60*24*180}
+        );
+
+        return json({
+          ok:true,
+          guest:{
+            ...g,
+            remaining:Math.max(
+              0,
+              3-await getCount(env,deviceId,event)
+            )
+          }
+        },200,{'Set-Cookie':visitorCookie(id,event)});
+      }
+
+      if(p==='/api/gallery'&&m==='GET'){
+        const list=await getGallery(env,event);
+
+        return json({
+          photos:list.map(({
+            fileId,url,thumbnailUrl,createdAt,guestName,message
+          })=>({
+            fileId,url,thumbnailUrl,createdAt,guestName,message
+          }))
+        });
+      }
+
+      if(p==='/api/upload'&&m==='POST'){
+        if(!env.SNAP_SMILE_SETTINGS||!env.IMAGEKIT_PRIVATE_KEY)
+          return json({error:'Layanan galeri belum tersambung.'},503);
+
+        const id=cookie(request,visitorCookieName)
+          ||(event===DEFAULT_EVENT?cookie(request,VISITOR_COOKIE):null);
+
+        const guest=await getGuest(env,id);
+
+        if(!id||!guest||(guest.eventId||DEFAULT_EVENT)!==event)
+          return json({
+            error:'Masukkan nama tamu untuk acara ini terlebih dahulu.'
+          },401);
+
+        const form=await request.formData();
+        const file=form.get('file');
+        const message=String(form.get('message')||'')
+          .trim().slice(0,500);
+
+        const deviceId=guest.deviceId||id;
+
+        const reserve=await stateCall(
+          env,
+          '/reserve',
+          {deviceId},
+          event
+        );
+
+        const reserved=await reserve.json();
+
+        if(!reserve.ok)
+          return json({
+            error:reserved.error||'Kuota unggahan habis.'
+          },reserve.status);
+
+        let d;
+
+        try{
+          d=await uploadImage(
+            env,
+            file,
+            'snap-smile-'+event+'-'+Date.now()+'.png',
+            '/snap-smile/'+event
+          );
+        }catch(e){
+          await stateCall(env,'/release',{deviceId},event);
+          throw e;
+        }
+
+        const photo={
+          fileId:d.fileId,
+          url:d.url,
+          thumbnailUrl:d.thumbnailUrl||d.url,
+          createdAt:new Date().toISOString(),
+          guestId:id,
+          deviceId,
+          eventId:event,
+          guestName:guest.name,
+          message
+        };
+
+        const add=await stateCall(
+          env,
+          '/gallery/add',
+          {photo},
+          event
+        );
+
+        if(!add.ok){
+          try{
+            await imagekit(
+              env,
+              '/files/'+encodeURIComponent(d.fileId),
+              {method:'DELETE'}
+            );
+          }catch{}
+
+          await stateCall(env,'/release',{deviceId},event);
+
+          throw new Error(
+            'Gagal menyimpan data galeri. Silakan coba lagi.'
+          );
+        }
+
+        return json({
+          ok:true,
+          photo,
+          remaining:reserved.remaining
+        });
+      }
+
+      if(p==='/api/admin/login'&&m==='POST'){
+        if(!env.ADMIN_PASSWORD||!env.ADMIN_SECRET)
+          return json({
+            error:'ADMIN_PASSWORD dan ADMIN_SECRET belum tersedia.'
+          },503);
+
+        let b={};
+        try{b=await request.json();}catch{}
+
+        if(b.password!==env.ADMIN_PASSWORD)
+          return json({error:'Password salah.'},401);
+
+        const token=b64url(
+          enc(JSON.stringify({exp:Date.now()+28800000}))
+        );
+
+        const sig=await sign(token,env.ADMIN_SECRET);
+
+        return json({ok:true},200,{
+          'Set-Cookie':
+            `${ADMIN_COOKIE}=${token}.${sig}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=28800`
+        });
+      }
+
+      if(p==='/api/admin/logout'&&m==='POST')
+        return json({ok:true},200,{
+          'Set-Cookie':
+            `${ADMIN_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`
+        });
+
+      if(p.startsWith('/api/admin/')){
+        if(!await isAdmin(request,env))
+          return json({error:'Silakan login sebagai admin.'},401);
+
+        if(p==='/api/admin/events'&&m==='GET')
+          return json({events:await getEvents(env)});
+
+        if(p==='/api/admin/events'&&m==='POST'){
+          let b={};
+          try{b=await request.json();}catch{}
+
+          const name=String(b.name||'').trim().slice(0,80);
+          const date=String(b.date||'').trim().slice(0,40);
+
+          let id=String(
+            b.id||name.toLowerCase()
+              .replace(/[^a-z0-9]+/g,'-')
+              .replace(/^-|-$/g,'')
+          ).toLowerCase().slice(0,40);
+
+          if(!name||!/^[a-z0-9][a-z0-9-]{1,39}$/.test(id))
+            return json({error:'Nama atau ID acara tidak valid.'},400);
+
+          const a=await getEvents(env);
+
+          if(a.some(x=>x.id===id))
+            return json({error:'ID acara sudah digunakan.'},409);
+
+          const e={
+            id,
+            name,
+            date,
+            createdAt:new Date().toISOString(),
+            active:true
+          };
+
+          a.push(e);
+
+          await env.SNAP_SMILE_SETTINGS.put(
+            'events:list',
+            JSON.stringify(a)
+          );
+
+          await env.SNAP_SMILE_SETTINGS.put(
+            ek(id,'config'),
+            JSON.stringify({
+              ...DEFAULTS,
+              title:'THE WEDDING OF '+name.toUpperCase(),
+              weddingLabel:'THE WEDDING OF',
+              coupleName:name,
+              subtitle:date||DEFAULTS.subtitle,
+              messageHeading:'Ucapan untuk '+name
+            })
+          );
+
+          return json({ok:true,event:e});
+        }
+
+        if(p==='/api/admin/events'&&m==='DELETE'){
+          let b={};
+          try{b=await request.json();}catch{}
+
+          if(!b.id||b.id===DEFAULT_EVENT)
+            return json({
+              error:'Acara utama tidak dapat dihapus.'
+            },400);
+
+          const a=await getEvents(env);
+
+          if(!a.some(x=>x.id===b.id))
+            return json({error:'Acara tidak ditemukan.'},404);
+
+          await env.SNAP_SMILE_SETTINGS.put(
+            'events:list',
+            JSON.stringify(a.filter(x=>x.id!==b.id))
+          );
+
+          return json({
+            ok:true,
+            note:'Acara diarsipkan; file foto tidak dihapus otomatis.'
+          });
+        }
+
+        if(p==='/api/admin/config'&&m==='GET')
+          return json(await config(env,event));
+                if(p==='/api/admin/config'&&m==='PUT'){
+          let c;
+          try{
+            c=await request.json();
+          }catch{
+            return json({error:'Data tidak valid.'},400);
+          }
+
+          const allowed={
+            photoCounts:[1,2,3,4],
+            countdowns:[0,3,5],
+            filters:['none','warm','soft','vintage','mono'],
+            frames:[
+              'floral-cream','floral-pink','floral-maroon',
+              'floral-sage','floral-mocha','floral-champagne',
+              'minang-maroon','minang-cream'
+            ]
+          };
+
+          for(const k of Object.keys(allowed)){
+            if(
+              !Array.isArray(c[k])||
+              !c[k].length||
+              c[k].some(v=>!allowed[k].includes(
+                (k==='photoCounts'||k==='countdowns')?Number(v):v
+              ))
+            ){
+              return json({error:'Pilihan '+k+' tidak valid.'},400);
+            }
+          }
+
+          const coupleName=String(
+            c.coupleName||
+            String(c.title||DEFAULTS.title)
+              .replace(/^the wedding of\s*/i,'')
+              .trim()
+          ).slice(0,60);
+
+          const n=c.noFrame||{};
+          const fonts=[
+            'cinzel','playfair-display','cormorant-garamond',
+            'georgia','great-vibes','alex-brush','allura',
+            'parisienne','pinyon-script'
+          ];
+
+          const pos=n.textPositions||{};
+
+          const point=k=>{
+            const v=pos[k]||{};
+            return {
+              x:Math.max(-300,Math.min(300,Number(v.x)||0)),
+              y:Math.max(-300,Math.min(300,Number(v.y)||0))
+            };
+          };
+
+          const validColor=v=>
+            /^#[0-9a-f]{6}$/i.test(String(v||''))
+              ?String(v)
+              :'#fffaf2';
+
+          const saved={
+            photoCounts:c.photoCounts.map(Number),
+            countdowns:c.countdowns.map(Number),
+            filters:c.filters,
+            frames:c.frames,
+
+            title:String(c.title||('THE WEDDING OF '+coupleName)).slice(0,100),
+            weddingLabel:String(c.weddingLabel||'THE WEDDING OF').slice(0,50),
+            coupleName,
+
+            headingFont:['cinzel','playfair-display','cormorant-garamond','georgia','great-vibes'].includes(c.headingFont)
+              ?c.headingFont:'cinzel',
+
+            nameFont:['great-vibes','alex-brush','allura','parisienne','pinyon-script','playfair-display','cormorant-garamond','cinzel'].includes(c.nameFont)
+              ?c.nameFont:'great-vibes',
+
+            headingSize:Math.max(12,Math.min(54,Number(c.headingSize)||24)),
+            nameSize:Math.max(24,Math.min(180,Number(c.nameSize)||76)),
+
+            dateFont:['great-vibes','allura','parisienne','cinzel','playfair-display','georgia','cormorant-garamond'].includes(c.dateFont)
+              ?c.dateFont:'cormorant-garamond',
+
+            dateSize:Math.max(10,Math.min(48,Number(c.dateSize)||20)),
+            subtitle:String(c.subtitle||DEFAULTS.subtitle).slice(0,40),
+            messageHeading:String(c.messageHeading||('Ucapan untuk '+coupleName)).slice(0,100),
+
+            monogramText:String(c.monogramText||'N & E').slice(0,8),
+            monogramFont:['great-vibes','allura','parisienne','playfair-display','cormorant-garamond','cinzel'].includes(c.monogramFont)
+              ?c.monogramFont:'great-vibes',
+
+            monogramSize:Math.max(16,Math.min(150,Number(c.monogramSize)||64)),
+            ornamentSize:Math.max(12,Math.min(100,Number(c.ornamentSize)||42)),
+
+            decorPositions:Object.fromEntries(
+              DEFAULTS.frames.map(frame=>{
+                const source=c.decorPositions?.[frame]||{};
+                return [
+                  frame,
+                  Object.fromEntries(
+                    ['monogram','ornament'].map(k=>{
+                      const v=source[k]||{};
+                      return [
+                        k,
+                        {
+                          x:Math.max(-400,Math.min(400,Number(v.x)||0)),
+                          y:Math.max(-400,Math.min(400,Number(v.y)||0))
+                        }
+                      ];
+                    })
+                  )
+                ];
+              })
+            ),
+
+            textPositions:Object.fromEntries(
+              DEFAULTS.frames.map(frame=>{
+                const source=c.textPositions?.[frame]||c.textPositions||{};
+                return [
+                  frame,
+                  Object.fromEntries(
+                    ['heading','name','date'].map(k=>{
+                      const v=source[k]||{};
+                      return [
+                        k,
+                        {
+                          x:Math.max(-400,Math.min(400,Number(v.x)||0)),
+                          y:Math.max(-400,Math.min(400,Number(v.y)||0))
+                        }
+                      ];
+                    })
+                  )
+                ];
+              })
+            ),
+
+            coverPosition:{
+              x:Math.max(0,Math.min(100,Number(c.coverPosition?.x??50))),
+              y:Math.max(0,Math.min(100,Number(c.coverPosition?.y??50)))
+            },
+
+            noFrame:{
+              heading:String(n.heading??'THE WEDDING OF').slice(0,50),
+
+              headingFont:fonts.includes(n.headingFont)?n.headingFont:'cinzel',
+              headingSize:Math.max(12,Math.min(54,Number(n.headingSize)||24)),
+
+              nameFont:fonts.includes(n.nameFont)?n.nameFont:'great-vibes',
+              nameSize:Math.max(24,Math.min(120,Number(n.nameSize)||52)),
+
+              dateFont:fonts.includes(n.dateFont)?n.dateFont:'cormorant-garamond',
+              dateSize:Math.max(10,Math.min(48,Number(n.dateSize)||20)),
+
+              headingColor:validColor(n.headingColor||n.color),
+              nameColor:validColor(n.nameColor||n.color),
+              dateColor:validColor(n.dateColor||n.color),
+
+              color:/^#[0-9a-f]{6}$/i.test(String(n.color||''))
+                ?n.color:'#76563c',
+
+              align:['left','center','right'].includes(n.align)
+                ?n.align:'center',
+
+              offsetX:Math.max(-250,Math.min(250,Number(n.offsetX)||0)),
+              offsetY:Math.max(-100,Math.min(100,Number(n.offsetY)||0)),
+
+              textPositions:{
+                heading:point('heading'),
+                name:point('name'),
+                date:point('date')
+              }
+            }
+          };
+
+          const old=await config(env,event);
+
+          const merged={
+            ...old,
+            ...saved,
+            noFrame:{
+              ...(old.noFrame||{}),
+              ...saved.noFrame
+            }
+          };
+
+          await env.SNAP_SMILE_SETTINGS.put(
+            ek(event,'config'),
+            JSON.stringify(merged)
+          );
+
+          return json({ok:true});
+        }
+
+        if(p==='/api/admin/cover'&&m==='POST'){
+          const form=await request.formData();
+          const file=form.get('file');
+
+          const d=await uploadImage(
+            env,
+            file,
+            'wedding-cover-'+Date.now(),
+            '/snap-smile-cover/'+event
+          );
+
+          const old=await env.SNAP_SMILE_SETTINGS
+            .get(ek(event,'cover'),'json').catch(()=>null);
+
+          const cover={
+            fileId:d.fileId,
+            url:d.url,
+            thumbnailUrl:d.thumbnailUrl||d.url,
+            updatedAt:new Date().toISOString()
+          };
+
+          await env.SNAP_SMILE_SETTINGS.put(
+            ek(event,'cover'),
+            JSON.stringify(cover)
+          );
+
+          if(old?.fileId){
+            try{
+              await imagekit(
+                env,
+                '/files/'+encodeURIComponent(old.fileId),
+                {method:'DELETE'}
+              );
+            }catch{}
+          }
+
+          return json({ok:true,cover});
+        }
+
+        if(p==='/api/admin/cover'&&m==='DELETE'){
+          const old=await env.SNAP_SMILE_SETTINGS
+            .get(ek(event,'cover'),'json').catch(()=>null);
+
+          await env.SNAP_SMILE_SETTINGS.delete(ek(event,'cover'));
+
+          if(old?.fileId){
+            try{
+              await imagekit(
+                env,
+                '/files/'+encodeURIComponent(old.fileId),
+                {method:'DELETE'}
+              );
+            }catch{}
+          }
+
+          return json({ok:true});
+        }
+
+        if(p==='/api/admin/gallery'&&m==='GET')
+          return json({photos:await getGallery(env,event)});
+
+        if(p==='/api/admin/gallery'&&m==='DELETE'){
+          let b={};
+          try{b=await request.json();}catch{}
+
+          const list=await getGallery(env,event);
+
+          const ids=new Set(
+            (
+              b.all
+                ?list.map(x=>x.fileId)
+                :(Array.isArray(b.fileIds)?b.fileIds:[])
+            ).filter(x=>typeof x==='string')
+          );
+
+          const deleted=[];
+
+          for(const photo of list){
+            if(!ids.has(photo.fileId))continue;
+
+            try{
+              const r=await imagekit(
+                env,
+                '/files/'+encodeURIComponent(photo.fileId),
+                {method:'DELETE'}
+              );
+
+              if(r.ok||r.status===404)deleted.push(photo);
+            }catch{}
+          }
+
+          const result=await stateCall(
+            env,
+            '/gallery/remove',
+            {fileIds:deleted.map(x=>x.fileId)},
+            event
+          );
+
+          if(!result.ok)
+            throw new Error(
+              'Foto terhapus di ImageKit tetapi pembaruan galeri gagal. Hubungi admin.'
+            );
+
+          return json({ok:true,deleted:deleted.length});
+        }
+      }
+
+      if(!env.ASSETS||typeof env.ASSETS.fetch!=='function'){
+        return new Response(
+          '<!doctype html><html lang="id"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Snap &amp; Smile — konfigurasi belum lengkap</title><body style="font:16px system-ui;padding:28px;line-height:1.5;color:#402b28"><h2>Snap &amp; Smile belum tersambung ke file website.</h2><p>Binding Static Assets dengan nama <b>ASSETS</b> belum tersedia pada Worker ini. Hubungkan kembali folder aset yang berisi <b>index.html</b> dan <b>admin.html</b>, lalu Deploy ulang.</p></body></html>',
+          {
+            status:503,
+            headers:{
+              'Content-Type':'text/html; charset=utf-8',
+              'Cache-Control':'no-store'
+            }
+          }
+        );
+      }
+
+      if(p==='/'||p===''){
+        return env.ASSETS.fetch(
+          new Request(new URL('/index.html'+u.search,u.origin),request)
+        );
+      }
+
+      if(p==='/admin'||p==='/admin/'||p==='/admin.html'){
+        return env.ASSETS.fetch(
+          new Request(new URL('/admin.html'+u.search,u.origin),request)
+        );
+      }
+
+      return env.ASSETS.fetch(request);
+
+    }catch(e){
+      return json({error:e?.message||'Terjadi kesalahan server.'},500);
+    }
+  }
+};
 
 
 // Durable Object: atomic quota reservations and serialized gallery updates.
 export class SnapSmileState {
-  constructor(state, env) { this.state = state; this.env = env; }
-  async fetch(request) {
-    const url = new URL(request.url), path = url.pathname;
-    try {
-      if (path === '/count') { const id=url.searchParams.get('deviceId')||url.searchParams.get('guestId'); return Response.json({count:Number(await this.state.storage.get('count:'+id)||0)}); }
-      const b = request.method === 'POST' ? await request.json() : {};
-      if (path === '/reserve') {
-        const id=String(b.deviceId||b.guestId||''); if(!id) return Response.json({error:'Identitas tamu tidak valid.'},{status:400});
-        const result=await this.state.storage.transaction(async tx=>{let n=await tx.get('count:'+id);if(n===undefined)n=Math.max(0,Number(b.legacyCount)||0);if(n>=3)return {ok:false,count:n};n++;await tx.put('count:'+id,n);return {ok:true,count:n};});
-        return Response.json(result.ok?{ok:true,remaining:3-result.count}:{error:'Batas unggahan tercapai: maksimal 3 photo strip per pengunjung.'},{status:result.ok?200:429});
+  constructor(state,env){
+    this.state=state;
+    this.env=env;
+  }
+
+  async fetch(request){
+    const url=new URL(request.url);
+    const path=url.pathname;
+
+    try{
+      if(path==='/count'){
+        const id=url.searchParams.get('deviceId')
+          ||url.searchParams.get('guestId');
+
+        return Response.json({
+          count:Number(await this.state.storage.get('count:'+id)||0)
+        });
       }
-      if (path === '/release') { const id=String(b.deviceId||b.guestId||'');await this.state.storage.transaction(async tx=>{const n=Number(await tx.get('count:'+id)||0);await tx.put('count:'+id,Math.max(0,n-1));});return Response.json({ok:true}); }
-      if (path === '/gallery/init') { let list=await this.state.storage.get('gallery');if(!list){list=Array.isArray(b.legacy)?b.legacy:[];await this.state.storage.put('gallery',list);}return Response.json({photos:list}); }
-      if (path === '/gallery/add') { const photo=b.photo;if(!photo?.fileId)return Response.json({error:'Data foto tidak valid.'},{status:400});await this.state.storage.transaction(async tx=>{const list=await tx.get('gallery')||[];list.unshift(photo);await tx.put('gallery',list.slice(0,500));});return Response.json({ok:true}); }
-      if (path === '/gallery/remove') { const ids=new Set(Array.isArray(b.fileIds)?b.fileIds:[]);let removed=[];await this.state.storage.transaction(async tx=>{const list=await tx.get('gallery')||[];removed=list.filter(x=>ids.has(x.fileId));await tx.put('gallery',list.filter(x=>!ids.has(x.fileId)));for(const p of removed){const owner=p.deviceId||p.guestId;if(owner){const k='count:'+owner,n=Number(await tx.get(k)||0);await tx.put(k,Math.max(0,n-1));}}});return Response.json({ok:true,deleted:removed.length}); }
+
+      const b=request.method==='POST'?await request.json():{};
+
+      if(path==='/reserve'){
+        const id=String(b.deviceId||b.guestId||'');
+
+        if(!id){
+          return Response.json(
+            {error:'Identitas tamu tidak valid.'},
+            {status:400}
+          );
+        }
+
+        const result=await this.state.storage.transaction(async tx=>{
+          let n=await tx.get('count:'+id);
+
+          if(n===undefined)n=Math.max(0,Number(b.legacyCount)||0);
+
+          if(n>=3)return {ok:false,count:n};
+
+          n++;
+          await tx.put('count:'+id,n);
+
+          return {ok:true,count:n};
+        });
+
+        return Response.json(
+          result.ok
+            ?{ok:true,remaining:3-result.count}
+            :{error:'Batas unggahan tercapai: maksimal 3 photo strip per pengunjung.'},
+          {status:result.ok?200:429}
+        );
+      }
+
+      if(path==='/release'){
+        const id=String(b.deviceId||b.guestId||'');
+
+        await this.state.storage.transaction(async tx=>{
+          const n=Number(await tx.get('count:'+id)||0);
+          await tx.put('count:'+id,Math.max(0,n-1));
+        });
+
+        return Response.json({ok:true});
+      }
+
+      if(path==='/gallery/init'){
+        let list=await this.state.storage.get('gallery');
+
+        if(!list){
+          list=Array.isArray(b.legacy)?b.legacy:[];
+          await this.state.storage.put('gallery',list);
+        }
+
+        return Response.json({photos:list});
+      }
+
+      if(path==='/gallery/add'){
+        const photo=b.photo;
+
+        if(!photo?.fileId){
+          return Response.json(
+            {error:'Data foto tidak valid.'},
+            {status:400}
+          );
+        }
+
+        await this.state.storage.transaction(async tx=>{
+          const list=await tx.get('gallery')||[];
+          list.unshift(photo);
+          await tx.put('gallery',list.slice(0,500));
+        });
+
+        return Response.json({ok:true});
+      }
+
+      if(path==='/gallery/remove'){
+        const ids=new Set(Array.isArray(b.fileIds)?b.fileIds:[]);
+        let removed=[];
+
+        await this.state.storage.transaction(async tx=>{
+          const list=await tx.get('gallery')||[];
+
+          removed=list.filter(x=>ids.has(x.fileId));
+
+          await tx.put(
+            'gallery',
+            list.filter(x=>!ids.has(x.fileId))
+          );
+
+          for(const p of removed){
+            const owner=p.deviceId||p.guestId;
+
+            if(owner){
+              const k='count:'+owner;
+              const n=Number(await tx.get(k)||0);
+              await tx.put(k,Math.max(0,n-1));
+            }
+          }
+        });
+
+        return Response.json({
+          ok:true,
+          deleted:removed.length
+        });
+      }
+
       return new Response('Not found',{status:404});
-    } catch(e) { return Response.json({error:e.message||'State error'},{status:500}); }
+
+    }catch(e){
+      return Response.json(
+        {error:e.message||'State error'},
+        {status:500}
+      );
+    }
   }
 }
